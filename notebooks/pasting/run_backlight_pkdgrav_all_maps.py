@@ -52,13 +52,14 @@ abs_path_src = project_base / "src"
 abs_path_results = project_base / "results"
 abs_path_params = project_base / "param_files"
 
-for path in [curr_path, abs_path_data, abs_path_src, abs_path_results, abs_path_params]:
+for path in [curr_path, abs_path_data, abs_path_results, abs_path_params]:
     sys.path.append(str(path))
+sys.path.append(os.path.join(str(abs_path_src), 'arxiv'))
 
 # --- Import Custom Modules ---
-from get_radial_profiles import Profiles
-from get_sim_maps import setup_sim_map, get_sim_map
-import helpers.constants as constants
+from godmax.get_radial_profiles import Profiles
+from godmax.get_sim_maps import setup_sim_map, get_sim_map
+import godmax.helpers.constants as constants
 
 
 # =============================================================================

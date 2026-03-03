@@ -25,7 +25,7 @@ abs_path_results = os.path.abspath(curr_path / "../results/")
 sys.path.append((curr_path))
 sys.path.append((abs_path_data))
 sys.path.append((abs_path_results))
-sys.path.append(abs_path_src)
+sys.path.append(os.path.join(str(abs_path_src), 'arxiv'))
 from jax import config
 config.update("jax_enable_x64", True)
 import scipy.interpolate as interp
@@ -65,8 +65,8 @@ halo_params_dict['nz'] = 32
 halo_params_dict['lg10_Mmin'] = 13.0
 halo_params_dict['lg10_Mmax'] = 16.0
 halo_params_dict['nM'] = 32
-from get_B12_profile import Battaglia_12_16
-import helpers.constants as constants
+from godmax.get_B12_profile import Battaglia_12_16
+import godmax.helpers.constants as constants
 cosmo_params_dict = {'w0':-1.0 ,'flat': True, 'H0': 69.0, 'Om0': 0.31, 'Ob0': 0.049, 'sigma8':0.81 ,'ns': 0.965}
 B12_test = Battaglia_12_16({'cosmo':cosmo_params_dict, 'init_power':False}, halo_params_dict)
 

@@ -26,7 +26,7 @@ abs_path_results = os.path.abspath(curr_path / "../../results/")
 sys.path.append((curr_path))
 sys.path.append((abs_path_data))
 sys.path.append((abs_path_results))
-sys.path.append(abs_path_src)
+sys.path.append(os.path.join(str(abs_path_src), 'arxiv'))
 import numpyro
 numpyro.set_platform("gpu")
 numpyro.enable_x64()
@@ -82,8 +82,8 @@ halo_params_dict['lg10_Mmin'] = 12.0
 halo_params_dict['lg10_Mmax'] = 16.0
 halo_params_dict['nM'] = 128
 
-from get_B12_profile import Battaglia_12_16
-import helpers.constants as constants
+from godmax.get_B12_profile import Battaglia_12_16
+import godmax.helpers.constants as constants
 # cosmo_params_dict = {'w0':-1.0 ,'flat': True, 'H0': 69.0, 'Om0': 0.31, 'Ob0': 0.049, 'sigma8':0.81 ,'ns': 0.965}
 cosmo_params_dict = {'w0':-1.0 ,'flat': True, 'H0': 67.74, 'Om0': 0.3089, 'Ob0': 0.0486, 'sigma8':0.8159 ,'ns': 0.9667}
 # B12_test = Battaglia_12_16({'cosmo':cosmo_params_dict, 'init_power':False}, halo_params_dict)
@@ -150,7 +150,7 @@ import numpy as np
 from multiprocessing import Pool, cpu_count
 from astropy.io import fits
 import jax_cosmo.background as bkgrd
-from get_sim_maps import get_sim_map
+from godmax.get_sim_maps import get_sim_map
 import h5py as h5
 
 

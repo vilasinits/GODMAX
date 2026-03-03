@@ -43,11 +43,16 @@ class get_Cl(get_Pkz):
         vmapped_func = get_vmapped_func_warg(self.get_P_lz, 2, 3)
         self.Pkmm_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pmm_tot_mat).T
         self.Pkmm_nfw_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.phfit_kz_mat).T 
-        if self.model_tSZ:       
+        if self.model_tSZ:
             self.Pkym_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pym_tot_mat).T
             Bl_array = jnp.exp(-1. * self.ell_array * (self.ell_array + 1) * (self.sig_beam ** 2) / 2.)
             self.Bl_mat = Bl_array[:, None]
             self.Pkym_lz_mat = self.Pkym_lz_mat * self.Bl_mat
+            # tSZ auto 3D power spectrum P_yy(k, z)
+            vmapped_func_yy = get_vmapped_func_warg(self.get_P_1h, 2, 4)
+            Pyy_1h_kz_mat = vmapped_func_yy(jnp.arange(self.nk), jnp.arange(self.nz), 3, 3).T
+            Pyy_2h_kz_mat = self.by_kz_mat * self.by_kz_mat * self.plin_kz_mat
+            self.Pyy_tot_kz_mat = Pyy_1h_kz_mat + Pyy_2h_kz_mat
         if self.model_galaxies:
             self.Pkge_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pge_tot_mat).T
             self.Pkgm_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgm_tot_mat).T
@@ -64,9 +69,15 @@ class get_Cl(get_Pkz):
         self.logPkmm_nfw_lz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkmm_nfw_lz_mat), extrap=True)        
         self.cached_power_spectra = self.cached_power_spectra.at[1,1].set(vmap(lambda l: jnp.exp(self.logPkmm_nfw_lz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
         if self.model_tSZ:
-            self.logPkymlz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkym_lz_mat), extrap=True)                
+            self.logPkymlz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkym_lz_mat), extrap=True)
             self.cached_power_spectra = self.cached_power_spectra.at[0,3].set(vmap(lambda l: jnp.exp(self.logPkymlz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
             self.cached_power_spectra = self.cached_power_spectra.at[3,0].set(self.cached_power_spectra[0,3])
+            # P_yy Limber-projected interpolator + cache
+            self.Pkyy_lz_mat = get_vmapped_func(self.get_Pkyy_lz, 2)(jnp.arange(self.nell), jnp.arange(self.nz)).T
+            self.logPkyylz_2d_interp = interpax.Interpolator2D(
+                jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkyy_lz_mat), extrap=True
+            )
+            self.cached_power_spectra = self.cached_power_spectra.at[3,3].set(vmap(lambda l: jnp.exp(self.logPkyylz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
         else: self.logPkymlz_2d_interp = EmptyCallable()
         if self.model_galaxies:
             self.logPkgmlz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkgm_lz_mat), extrap=True)        
@@ -136,10 +147,12 @@ class get_Cl(get_Pkz):
                 print("Time to compute the kappa y: ", time.time() - ti)
                 ti = time.time()
             if self.model_galaxies:
-                # self.Cl_gal_y_tot_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nbins_lens), 0, 2, 3).T        
+                # self.Cl_gal_y_tot_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nbins_lens), 0, 2, 3).T
                 self.Cl_gal_y_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), 0, 2, 3).T
                 if self.ENABLE_TIMING:
                     print("Time to compute the gal y: ", time.time() - ti)
+            # tSZ auto angular power spectrum C(ℓ)_yy — via the same get_Cl_tot path
+            self.Cl_y_y_tot_mat = self.get_Cl_tot(0, 0, 3, 3)
         # if self.ENABLE_TIMING:
         #     print("Time to compute the angular power spectra: ", time.time() - ti)
         #     ti = time.time()
@@ -293,6 +306,19 @@ class get_Cl(get_Pkz):
         Pk = self.cached_power_spectra[probe1, probe2]
         fx = prefac_for_uk1 * prefac_for_uk2  * (self.chi_array_for_Cls ** 2) * self.dchi_dz_array_for_Cls * Pk
         return jsi.trapezoid(fx, x=self.z_array_for_Cls)     
+
+    @partial(jit, static_argnums=(0,))
+    def get_Pkyy_lz(self, jl, jz):
+        """
+        Limber-projected tSZ auto power spectrum at multipole index jl and redshift index jz,
+        including the beam suppression factor B(ℓ)^2.
+        """
+        ell = self.ell_array[jl]
+        chi_z = self.chi_array[jz]
+        Bl = jnp.exp(-1. * ell * (ell + 1) * (self.sig_beam ** 2) / 2.)
+        k_ell = (ell + 0.5) / jnp.clip(chi_z, 1.0)
+        Pkz_ell = jnp.exp(jnp.interp(jnp.log(k_ell), jnp.log(self.kPk_array), jnp.log(self.Pyy_tot_kz_mat[:, jz])))
+        return (Bl ** 2) * Pkz_ell
 
     @partial(jit, static_argnums=(0,))
     def get_Pge_interpz(self, jk):
