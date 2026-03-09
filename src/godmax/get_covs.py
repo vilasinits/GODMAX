@@ -131,7 +131,7 @@ class get_cov(get_Cl):
         else:
             # print a warning:
             print('Warning: no yy-total or yy-noise file found')
-            self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['yy']['0_0']['tot_ellsurvey']
+            self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['yy']['bin_0_0']['tot_ellsurvey']
         self.Cl_result_dict['yy']['bin_combs'] = [[0,0]]
 
 

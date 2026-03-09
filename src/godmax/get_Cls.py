@@ -8,6 +8,8 @@ from astropy import constants as const
 import interpax
 from jax_cosmo.scipy.integrate import simps
 import time
+import numpy as _np
+import math as _math
 
 class get_Cl(get_Pkz):
     """
@@ -151,11 +153,34 @@ class get_Cl(get_Pkz):
                 self.Cl_gal_y_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), 0, 2, 3).T
                 if self.ENABLE_TIMING:
                     print("Time to compute the gal y: ", time.time() - ti)
-            # tSZ auto angular power spectrum C(ℓ)_yy — via the same get_Cl_tot path
-            self.Cl_y_y_tot_mat = self.get_Cl_tot(0, 0, 3, 3)
-        # if self.ENABLE_TIMING:
-        #     print("Time to compute the angular power spectra: ", time.time() - ti)
-        #     ti = time.time()
+
+            # tSZ auto angular power spectrum C(ℓ)_yy.
+            # Mirrors get_covs.py: file total → file noise + theory → pure theory.
+            yy_total_ell_fname = analysis_dict.get('yy_total_ell_fname', None)
+            yy_noise_ell_fname = analysis_dict.get('yy_noise_ell_fname', None)
+            if yy_total_ell_fname is not None:
+                ell_yy_f, Cl_yy_f = _np.loadtxt(yy_total_ell_fname, unpack=True)
+                log_interp = interpax.Interpolator1D(
+                    jnp.log(jnp.array(ell_yy_f)),
+                    jnp.log(jnp.array(Cl_yy_f) + 1e-25),
+                    extrap=(_math.log(Cl_yy_f[0]), _math.log(Cl_yy_f[-1]))
+                )
+                self.Cl_y_y_tot_mat = jnp.exp(log_interp(jnp.log(self.ell_array)))
+                print('Loaded yy total from file into Cl_y_y_tot_mat')
+            elif yy_noise_ell_fname is not None:
+                Cl_y_y_theory = self.get_Cl_tot(0, 0, 3, 3)
+                ell_yy_n, Cl_yy_n = _np.loadtxt(yy_noise_ell_fname, unpack=True)
+                log_noise_interp = interpax.Interpolator1D(
+                    jnp.log(jnp.array(ell_yy_n)),
+                    jnp.log(jnp.abs(jnp.array(Cl_yy_n)) + 1e-25),
+                    extrap=True
+                )
+                noise_yy = jnp.exp(log_noise_interp(jnp.log(self.ell_array)))
+                self.Cl_y_y_tot_mat = Cl_y_y_theory + noise_yy
+                print('Loaded yy noise from file; Cl_y_y_tot_mat = theory + noise')
+            else:
+                self.Cl_y_y_tot_mat = self.get_Cl_tot(0, 0, 3, 3)
+        
 
     @partial(jit, static_argnums=(0,))
     def get_P_lz(self, jl, jz, Pk_mat):
