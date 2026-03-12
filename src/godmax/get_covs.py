@@ -18,7 +18,7 @@ import interpax
 import scipy as sp
 import math
 
-class get_cov(get_Cl):
+class get_cov(get_Cl): 
     def __init__(
                 self,
                 sim_params_dict: dict,
@@ -107,9 +107,23 @@ class get_cov(get_Cl):
         yy_noise_ell_fname = analysis_dict.get('yy_noise_ell_fname',None)
         yy_total_ell_fname = analysis_dict.get('yy_total_ell_fname',None)
         sigma_epsilon_SN_bins = analysis_dict.get('sigma_epsilon_SN_bins',jnp.zeros(self.nbins))
-        neff_arcmin2_SN_bins = analysis_dict.get('neff_arcmin2_SN_bins',jnp.ones(self.nbins))
 
-        nbar_lens_bins = analysis_dict.get('nbar_lens_bins',jnp.ones(self.nbins_lens))
+        # print warning if sigma_epsilon_SN_bins is not provided:
+        if 'sigma_epsilon_SN_bins' not in analysis_dict:
+            print('Warning: sigma_epsilon_SN_bins not provided, using zeros')
+
+            sigma_epsilon_SN_bins = analysis_dict.get('sigma_epsilon_SN_bins',jnp.zeros(self.nbins))
+
+         # print warning if neff_arcmin2_SN_bins is not provided:   
+        if 'neff_arcmin2_SN_bins' not in analysis_dict:
+            print('Warning: neff_arcmin2_SN_bins not provided, using ones')
+            neff_arcmin2_SN_bins = analysis_dict.get('neff_arcmin2_SN_bins',jnp.ones(self.nbins))
+
+        # print warning if nbar_lens_bins is not provided:
+        if 'nbar_lens_bins' not in analysis_dict:
+            print('Warning: nbar_lens_bins not provided, using ones')
+
+            nbar_lens_bins = analysis_dict.get('nbar_lens_bins',jnp.ones(self.nbins_lens))
 
 
         if yy_total_ell_fname is not None:
@@ -124,13 +138,13 @@ class get_cov(get_Cl):
         elif yy_noise_ell_fname is not None:
             ell_yy_noise, Cl_yy_noise = np.loadtxt(yy_noise_ell_fname, unpack = True)
             log_Cl_yy_noise_interp = interpax.Interpolator1D(
-                jnp.log(ell_yy_noise), jnp.log(jnp.abs(Cl_yy_noise)) + 1e-25, extrap=True
+                jnp.log(ell_yy_noise), jnp.log(jnp.abs(Cl_yy_noise + 1e-25)) , extrap=True
             )
             noise_yy = jnp.exp(log_Cl_yy_noise_interp(jnp.log(l_array_survey)))
             self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['yy']['bin_0_0']['tot_ellsurvey'] + noise_yy
         else:
             # print a warning:
-            print('Warning: no yy-total or yy-noise file found')
+            print('Warning: no yy-total or yy-noise file found, using theory yy for total+noise in covariance')
             self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['yy']['bin_0_0']['tot_ellsurvey']
         self.Cl_result_dict['yy']['bin_combs'] = [[0,0]]
 
@@ -197,7 +211,53 @@ class get_cov(get_Cl):
         self.Cl_result_dict['kk']['bin_combs'] = bin_combs_kk
         self.Cl_result_dict['gy']['bin_combs'] = bin_combs_gy
         self.Cl_result_dict['gk']['bin_combs'] = bin_combs_gk
-        self.Cl_result_dict['gg']['bin_combs'] = bin_combs_gg                
+        self.Cl_result_dict['gg']['bin_combs'] = bin_combs_gg
+
+        if analysis_dict.get('plot_cls', False):
+            import matplotlib.pyplot as plt
+            probes_to_plot = [p for p in ['yy', 'ky', 'kk', 'gy', 'gk', 'gg']
+                              if p in self.Cl_result_dict
+                              and any(k.startswith('bin_') for k in self.Cl_result_dict[p])]
+            n_probes = len(probes_to_plot)
+            ncols    = int(np.ceil(np.sqrt(n_probes)))
+            nrows    = int(np.ceil(n_probes / ncols))
+            fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
+            axes_flat = np.array(axes).flatten()
+
+            for ax, probe in zip(axes_flat, probes_to_plot):
+                bin_keys = [k for k in self.Cl_result_dict[probe] if k.startswith('bin_')]
+                colors   = plt.cm.tab10(np.linspace(0, 0.9, max(len(bin_keys), 1)))
+                for bin_key, color in zip(bin_keys, colors):
+                    entry       = self.Cl_result_dict[probe][bin_key]
+                    cl_theory   = np.abs(np.array(entry['tot_ellsurvey']))
+                    cl_total    = np.abs(np.array(entry['tot_plus_noise_ellsurvey']))
+                    label       = bin_key.replace('bin_', '')
+                    ax.loglog(l_array_survey, cl_theory, '-',  color=color, lw=1.5,
+                              label=label if len(bin_keys) <= 10 else None)
+                    ax.loglog(l_array_survey, cl_total,  '--', color=color, lw=1.0, alpha=0.8)
+                    # noise: explicit key (kk shape noise) or difference (gg shot noise)
+                    if 'noise_ellsurvey' in entry:
+                        noise = np.abs(np.array(entry['noise_ellsurvey']))
+                        ax.loglog(l_array_survey, noise, ':', color=color, lw=1.0, alpha=0.7)
+                    elif not np.allclose(cl_theory, cl_total):
+                        noise = np.abs(cl_total - cl_theory)
+                        ax.loglog(l_array_survey, noise, ':', color=color, lw=1.0, alpha=0.7)
+                ax.set_title(probe, fontsize=11)
+                ax.set_xlabel(r'$\ell$', fontsize=10)
+                ax.set_ylabel(r'$C_\ell$', fontsize=10)
+                ax.grid(True, alpha=0.3)
+                if len(bin_keys) <= 10:
+                    ax.legend(fontsize=6, ncol=2)
+
+            for ax in axes_flat[n_probes:]:
+                ax.set_visible(False)
+
+            fig.suptitle(
+                r'Power spectra — solid: $C_\ell$,  dashed: $C_\ell$+noise,  dotted: noise',
+                fontsize=11
+            )
+            plt.tight_layout()
+            plt.show()
 
         ul_dict = {}
         ul_dict['y_0'] = self.uy_l_for_cov
