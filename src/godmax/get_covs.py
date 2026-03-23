@@ -100,53 +100,40 @@ class get_cov(get_Cl):
         self.Cl_result_dict = {}
         self.Cl_result_dict['l_array_survey'] = l_array_survey
         self.Cl_result_dict['dl_array_survey'] = dl_array_survey
-        self.Cl_result_dict['yy'] = {}
-        self.Cl_result_dict['yy']['bin_' + '0_0'] = {}
-        self.Cl_result_dict['yy']['bin_' + '0_0']['tot_ellsurvey'] = self.Cl_y_y_tot_mat
-        
-        yy_noise_ell_fname = analysis_dict.get('yy_noise_ell_fname',None)
-        yy_total_ell_fname = analysis_dict.get('yy_total_ell_fname',None)
-        sigma_epsilon_SN_bins = analysis_dict.get('sigma_epsilon_SN_bins',jnp.zeros(self.nbins))
+        # yy: get_Cls already loaded the file and set:
+        #   self.Cl_y_y_signal_mat  = theory-only Cl_yy  (on ell_array)
+        #   self.Cl_y_y_tot_mat     = theory + noise Cl_yy (on ell_array)
+        # Interpolate both onto l_array_survey; no file reading needed here.
+        def _interp_cl_to_survey(Cl_ell):
+            return jnp.exp(jnp.interp(
+                jnp.log(l_array_survey),
+                jnp.log(self.ell_array),
+                jnp.log(jnp.maximum(Cl_ell, 1e-100))
+            ))
 
-        # print warning if sigma_epsilon_SN_bins is not provided:
+        Cl_yy_signal_survey   = _interp_cl_to_survey(self.Cl_y_y_signal_mat)
+        Cl_yy_noise_survey    = _interp_cl_to_survey(jnp.maximum(self.Cl_y_y_noise_mat, 1e-100))
+        Cl_yy_totnoise_survey = _interp_cl_to_survey(self.Cl_y_y_tot_mat)
+
+        self.Cl_result_dict['yy'] = {}
+        self.Cl_result_dict['yy']['bin_0_0'] = {
+            'tot_ellsurvey'           : Cl_yy_signal_survey,
+            'tot_plus_noise_ellsurvey': Cl_yy_totnoise_survey,
+            'noise_ellsurvey'         : Cl_yy_noise_survey,
+        }
+        self.Cl_result_dict['yy']['bin_combs'] = [[0, 0]]
+
+        sigma_epsilon_SN_bins = analysis_dict.get('sigma_epsilon_SN_bins', jnp.zeros(self.nbins))
         if 'sigma_epsilon_SN_bins' not in analysis_dict:
             print('Warning: sigma_epsilon_SN_bins not provided, using zeros')
 
-            sigma_epsilon_SN_bins = analysis_dict.get('sigma_epsilon_SN_bins',jnp.zeros(self.nbins))
-
-         # print warning if neff_arcmin2_SN_bins is not provided:   
+        neff_arcmin2_SN_bins = analysis_dict.get('neff_arcmin2_SN_bins', jnp.ones(self.nbins))
         if 'neff_arcmin2_SN_bins' not in analysis_dict:
             print('Warning: neff_arcmin2_SN_bins not provided, using ones')
-            neff_arcmin2_SN_bins = analysis_dict.get('neff_arcmin2_SN_bins',jnp.ones(self.nbins))
 
-        # print warning if nbar_lens_bins is not provided:
+        nbar_lens_bins = analysis_dict.get('nbar_lens_bins', jnp.ones(self.nbins_lens))
         if 'nbar_lens_bins' not in analysis_dict:
             print('Warning: nbar_lens_bins not provided, using ones')
-
-            nbar_lens_bins = analysis_dict.get('nbar_lens_bins',jnp.ones(self.nbins_lens))
-
-
-        if yy_total_ell_fname is not None:
-            ell_yy_tot, Cl_yy_tot = np.loadtxt(yy_total_ell_fname, unpack  = True)
-            log_Cl_yy_tot_interp = interpax.Interpolator1D(
-                jnp.log(ell_yy_tot), jnp.log(Cl_yy_tot + 1e-25), extrap=(math.log(Cl_yy_tot[0]), math.log(Cl_yy_tot[-1])))
-            # log_Cl_yy_tot_interp = interpax.Interpolator1D(
-            #     jnp.log(ell_yy_tot), jnp.log(Cl_yy_tot + 1e-25), extrap=-120)
-            Cl_yy_tot = jnp.exp(log_Cl_yy_tot_interp(jnp.log(l_array_survey)))
-            self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = Cl_yy_tot
-            print('Loaded up y-total file')
-        elif yy_noise_ell_fname is not None:
-            ell_yy_noise, Cl_yy_noise = np.loadtxt(yy_noise_ell_fname, unpack = True)
-            log_Cl_yy_noise_interp = interpax.Interpolator1D(
-                jnp.log(ell_yy_noise), jnp.log(jnp.abs(Cl_yy_noise + 1e-25)) , extrap=True
-            )
-            noise_yy = jnp.exp(log_Cl_yy_noise_interp(jnp.log(l_array_survey)))
-            self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['yy']['bin_0_0']['tot_ellsurvey'] + noise_yy
-        else:
-            # print a warning:
-            print('Warning: no yy-total or yy-noise file found, using theory yy for total+noise in covariance')
-            self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['yy']['bin_0_0']['tot_ellsurvey']
-        self.Cl_result_dict['yy']['bin_combs'] = [[0,0]]
 
 
         bin_combs_ky = []
@@ -201,9 +188,11 @@ class get_cov(get_Cl):
                         shotnoise = 1/nbar_rad2_from_arcmin2
                     else:
                         shotnoise = 0.
-                    self.Cl_result_dict['gg']['bin_' + str(jb1+1) + '_' + str(jb2+1)] = {}       
+                    self.Cl_result_dict['gg']['bin_' + str(jb1+1) + '_' + str(jb2+1)] = {}
                     self.Cl_result_dict['gg']['bin_' + str(jb1+1) + '_' + str(jb2+1)]['tot_ellsurvey'] = (self.Cl_gal_gal_tot_mat)[:, jb1,jb2]
                     self.Cl_result_dict['gg']['bin_' + str(jb1+1) + '_' + str(jb2+1)]['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['gg']['bin_' + str(jb1+1) + '_' + str(jb2+1)]['tot_ellsurvey'] + shotnoise
+                    if jb1 == jb2:
+                        self.Cl_result_dict['gg']['bin_' + str(jb1+1) + '_' + str(jb2+1)]['noise_ellsurvey'] = shotnoise * jnp.ones(len(l_array_survey))
                     bin_combs_gg.append([jb1+1, jb2+1])
 
 
@@ -213,51 +202,27 @@ class get_cov(get_Cl):
         self.Cl_result_dict['gk']['bin_combs'] = bin_combs_gk
         self.Cl_result_dict['gg']['bin_combs'] = bin_combs_gg
 
-        if analysis_dict.get('plot_cls', False):
-            import matplotlib.pyplot as plt
-            probes_to_plot = [p for p in ['yy', 'ky', 'kk', 'gy', 'gk', 'gg']
-                              if p in self.Cl_result_dict
-                              and any(k.startswith('bin_') for k in self.Cl_result_dict[p])]
-            n_probes = len(probes_to_plot)
-            ncols    = int(np.ceil(np.sqrt(n_probes)))
-            nrows    = int(np.ceil(n_probes / ncols))
-            fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
-            axes_flat = np.array(axes).flatten()
-
-            for ax, probe in zip(axes_flat, probes_to_plot):
-                bin_keys = [k for k in self.Cl_result_dict[probe] if k.startswith('bin_')]
-                colors   = plt.cm.tab10(np.linspace(0, 0.9, max(len(bin_keys), 1)))
-                for bin_key, color in zip(bin_keys, colors):
-                    entry       = self.Cl_result_dict[probe][bin_key]
-                    cl_theory   = np.abs(np.array(entry['tot_ellsurvey']))
-                    cl_total    = np.abs(np.array(entry['tot_plus_noise_ellsurvey']))
-                    label       = bin_key.replace('bin_', '')
-                    ax.loglog(l_array_survey, cl_theory, '-',  color=color, lw=1.5,
-                              label=label if len(bin_keys) <= 10 else None)
-                    ax.loglog(l_array_survey, cl_total,  '--', color=color, lw=1.0, alpha=0.8)
-                    # noise: explicit key (kk shape noise) or difference (gg shot noise)
-                    if 'noise_ellsurvey' in entry:
-                        noise = np.abs(np.array(entry['noise_ellsurvey']))
-                        ax.loglog(l_array_survey, noise, ':', color=color, lw=1.0, alpha=0.7)
-                    elif not np.allclose(cl_theory, cl_total):
-                        noise = np.abs(cl_total - cl_theory)
-                        ax.loglog(l_array_survey, noise, ':', color=color, lw=1.0, alpha=0.7)
-                ax.set_title(probe, fontsize=11)
-                ax.set_xlabel(r'$\ell$', fontsize=10)
-                ax.set_ylabel(r'$C_\ell$', fontsize=10)
-                ax.grid(True, alpha=0.3)
-                if len(bin_keys) <= 10:
-                    ax.legend(fontsize=6, ncol=2)
-
-            for ax in axes_flat[n_probes:]:
-                ax.set_visible(False)
-
-            fig.suptitle(
-                r'Power spectra — solid: $C_\ell$,  dashed: $C_\ell$+noise,  dotted: noise',
-                fontsize=11
-            )
-            plt.tight_layout()
-            plt.show()
+        # Build Cl_plot_dict for external plotting.
+        # Keys: 'ell', then per-probe dicts keyed by bin label (e.g. 'bin_1_1').
+        # Each bin entry has 'theory', 'theory_plus_noise', and optionally 'noise'.
+        self.Cl_plot_dict = {'ell': np.array(l_array_survey)}
+        for _probe in ['yy', 'ky', 'kk', 'gy', 'gk', 'gg']:
+            if _probe not in self.Cl_result_dict:
+                continue
+            _bin_keys = [k for k in self.Cl_result_dict[_probe]
+                         if k.startswith('bin_') and k != 'bin_combs']
+            if not _bin_keys:
+                continue
+            self.Cl_plot_dict[_probe] = {}
+            for _bk in _bin_keys:
+                _entry = self.Cl_result_dict[_probe][_bk]
+                _d = {
+                    'theory'           : np.array(_entry['tot_ellsurvey']),
+                    'theory_plus_noise': np.array(_entry['tot_plus_noise_ellsurvey']),
+                }
+                if 'noise_ellsurvey' in _entry:
+                    _d['noise'] = np.array(_entry['noise_ellsurvey'])
+                self.Cl_plot_dict[_probe][_bk] = _d
 
         ul_dict = {}
         ul_dict['y_0'] = self.uy_l_for_cov
@@ -372,9 +337,26 @@ class get_cov(get_Cl):
                         self.beam_fwhm_arcmin
                         )
 
-                    covtot = covG + covNG
+                    # covtot = covG + covNG
                     # covtot = covG
                     # covtot = covNG
+                    # Symmetrize NG (float tiling can break exact symmetry) then
+                    # clip any tiny negative eigenvalues that survive the addition.
+                    covNG_sym = (covNG + covNG.T) / 2.0
+                    covtot_raw = covG + covNG_sym
+                    covtot_sym = (covtot_raw + covtot_raw.T) / 2.0
+                    eigvals, eigvecs = np.linalg.eigh(covtot_sym)
+                    if np.any(eigvals < 0):
+                        n_neg = np.sum(eigvals < 0)
+                        frac   = np.abs(eigvals[eigvals < 0]).max() / eigvals.max()
+                        if self.verbose:
+                            print(f'  [{stats_analyze_1_ordered}x{stats_analyze_2_ordered}] '
+                                  f'clipping {n_neg} negative eigenvalues '
+                                  f'(max |neg|/max_pos = {frac:.2e})')
+                        eigvals = np.maximum(eigvals, 0.0)
+                    covtot = eigvecs @ np.diag(eigvals) @ eigvecs.T
+
+                    # covtot = covG + covNG
                     bin_key = 'bin_' + str(bins1_stat1[jb1]) + '_' + str(bins2_stat1[jb1]) + '_' + str(
                         bins1_stat2[jb2]
                         ) + '_' + str(bins2_stat2[jb2])
@@ -476,6 +458,47 @@ class get_cov(get_Cl):
             self.covNG_dict[stats_analyze_1_ordered + '_' + stats_analyze_2_ordered] = covNG_stat12
             self.covtot_dict[stats_analyze_1_ordered + '_' + stats_analyze_2_ordered] = covtot_stat12
 
+        if analysis_dict.get('plot_cov', False):
+            import matplotlib.pyplot as plt
+            from matplotlib.lines import Line2D
+            probe_pairs = list(self.covtot_dict.keys())
+            n_pairs = len(probe_pairs)
+            ncols   = int(np.ceil(np.sqrt(n_pairs)))
+            nrows   = int(np.ceil(n_pairs / ncols))
+            fig, axes = plt.subplots(nrows, ncols, figsize=(6 * ncols, 6 * nrows))
+            axes_flat = np.array(axes).flatten()
+
+            for ax, probe_pair in zip(axes_flat, probe_pairs):
+                bin_keys = [k for k in self.covtot_dict[probe_pair] if k.startswith('bin_')]
+                bin_key  = bin_keys[0]   # first bin combination
+                covG   = np.array(self.covG_dict[probe_pair][bin_key])
+                covNG  = np.array(self.covNG_dict[probe_pair][bin_key])
+                covtot = np.array(self.covtot_dict[probe_pair][bin_key])
+
+                diag_G   = np.abs(np.diag(covG))
+                diag_NG  = np.abs(np.diag(covNG))
+                diag_tot = np.abs(np.diag(covtot))
+
+                eigvals  = np.linalg.eigvalsh(covtot)
+                n_neg    = np.sum(eigvals < 0)
+                status   = f'neg={n_neg}' if n_neg > 0 else 'PD'
+
+                ax.semilogy(diag_G,   'g-',  lw=1.5, label='covG diag')
+                ax.semilogy(diag_NG,  'r--', lw=1.5, label='covNG diag')
+                ax.semilogy(diag_tot, 'b-',  lw=2.0, label='covtot diag')
+                ax.set_title(f'{probe_pair}  {bin_key}\n{status}', fontsize=12)
+                ax.set_xlabel(r'$\ell$ index', fontsize=9)
+                ax.set_ylabel(r'$|\mathrm{Cov}|$ diagonal', fontsize=9)
+                ax.legend(fontsize=8)
+                ax.grid(True, alpha=0.3)
+
+            for ax in axes_flat[n_pairs:]:
+                ax.set_visible(False)
+
+            # fig.suptitle('Covariance diagonal per probe pair (first bin combo)\ngreen=G, red=NG, blue=tot', fontsize=10)
+            plt.tight_layout()
+            plt.savefig("../debug_plots/covariance_diagonal.png", dpi=500)
+            plt.show()
 
     @partial(jit, static_argnums=(0,))
     def get_uyl(self, jl, jz, jM):

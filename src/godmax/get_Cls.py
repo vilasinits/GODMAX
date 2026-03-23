@@ -52,9 +52,9 @@ class get_Cl(get_Pkz):
             self.Pkym_lz_mat = self.Pkym_lz_mat * self.Bl_mat
             # tSZ auto 3D power spectrum P_yy(k, z)
             vmapped_func_yy = get_vmapped_func_warg(self.get_P_1h, 2, 4)
-            Pyy_1h_kz_mat = vmapped_func_yy(jnp.arange(self.nk), jnp.arange(self.nz), 3, 3).T
-            Pyy_2h_kz_mat = self.by_kz_mat * self.by_kz_mat * self.plin_kz_mat
-            self.Pyy_tot_kz_mat = Pyy_1h_kz_mat + Pyy_2h_kz_mat
+            self.Pyy_1h_kz_mat = vmapped_func_yy(jnp.arange(self.nk), jnp.arange(self.nz), 3, 3).T
+            self.Pyy_2h_kz_mat = self.by_kz_mat * self.by_kz_mat * self.plin_kz_mat
+            self.Pyy_tot_kz_mat = self.Pyy_1h_kz_mat + self.Pyy_2h_kz_mat
         if self.model_galaxies:
             self.Pkge_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pge_tot_mat).T
             self.Pkgm_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgm_tot_mat).T
@@ -155,32 +155,39 @@ class get_Cl(get_Pkz):
                     print("Time to compute the gal y: ", time.time() - ti)
 
             # tSZ auto angular power spectrum C(ℓ)_yy.
-            # Mirrors get_covs.py: file total → file noise + theory → pure theory.
+            # Always store pure theory first; noise and total follow from the file.
+            self.Cl_y_y_signal_mat = self.get_Cl_tot(0, 0, 3, 3)
+
             yy_total_ell_fname = analysis_dict.get('yy_total_ell_fname', None)
             yy_noise_ell_fname = analysis_dict.get('yy_noise_ell_fname', None)
             if yy_total_ell_fname is not None:
-                ell_yy_f, Cl_yy_f = _np.loadtxt(yy_total_ell_fname, unpack=True)
+                ell_yy_f, Cl_yy_f = _np.loadtxt(yy_total_ell_fname, unpack=True, usecols=(0, 1))
                 log_interp = interpax.Interpolator1D(
                     jnp.log(jnp.array(ell_yy_f)),
                     jnp.log(jnp.array(Cl_yy_f) + 1e-25),
                     extrap=(_math.log(Cl_yy_f[0]), _math.log(Cl_yy_f[-1]))
                 )
-                self.Cl_y_y_tot_mat = jnp.exp(log_interp(jnp.log(self.ell_array)))
+                self.Cl_y_y_tot_mat   = jnp.exp(log_interp(jnp.log(self.ell_array)))
+                self.Cl_y_y_noise_mat = self.Cl_y_y_tot_mat - self.Cl_y_y_signal_mat
                 print('Loaded yy total from file into Cl_y_y_tot_mat')
             elif yy_noise_ell_fname is not None:
-                Cl_y_y_theory = self.get_Cl_tot(0, 0, 3, 3)
-                ell_yy_n, Cl_yy_n = _np.loadtxt(yy_noise_ell_fname, unpack=True)
+                ell_yy_n, Cl_yy_n = _np.loadtxt(yy_noise_ell_fname, unpack=True, usecols=(0, 1))
                 log_noise_interp = interpax.Interpolator1D(
                     jnp.log(jnp.array(ell_yy_n)),
                     jnp.log(jnp.abs(jnp.array(Cl_yy_n)) + 1e-25),
                     extrap=True
                 )
-                noise_yy = jnp.exp(log_noise_interp(jnp.log(self.ell_array)))
-                self.Cl_y_y_tot_mat = Cl_y_y_theory + noise_yy
+                self.Cl_y_y_noise_mat = jnp.exp(log_noise_interp(jnp.log(self.ell_array)))
+                self.Cl_y_y_tot_mat   = self.Cl_y_y_signal_mat + self.Cl_y_y_noise_mat
                 print('Loaded yy noise from file; Cl_y_y_tot_mat = theory + noise')
             else:
-                self.Cl_y_y_tot_mat = self.get_Cl_tot(0, 0, 3, 3)
-        
+                print('Warning: no yy-total or yy-noise file provided; Cl_y_y_tot_mat = theory only')
+                self.Cl_y_y_noise_mat = jnp.zeros_like(self.Cl_y_y_signal_mat)
+                self.Cl_y_y_tot_mat   = self.Cl_y_y_signal_mat
+
+        self._build_cls_1h2h_dict()
+
+
 
     @partial(jit, static_argnums=(0,))
     def get_P_lz(self, jl, jz, Pk_mat):
@@ -356,3 +363,140 @@ class get_Cl(get_Pkz):
         """
         fx_intz = jsi.trapezoid(self.Pge_zarray * self.Wg_mat[jb][None,:], x=self.z_array_for_Cls)
         return jnp.exp(jnp.interp(jnp.log(self.k_array_survey), jnp.log(self.kPk_array), jnp.log(fx_intz + 1e-40)))
+
+    def _build_cls_1h2h_dict(self):
+        """
+        Build self.Cl_1h2h_dict with 1h, 2h, and total Dl = ell(ell+1)Cl/2pi
+        for all active probes.
+
+        Structure::
+
+            Cl_1h2h_dict = {
+                'ell': array,            # (nell,)
+                'yy': [{'label': 'yy', 'tot': ..., '1h': ..., '2h': ...}],
+                'ky': [{'label': 'b0', ...}, ...],   # one entry per source bin
+                'kk': [{'label': '(0,1)', ...}, ...],
+                'gy': [...], 'gk': [...], 'gg': [...],
+            }
+
+        All Dl arrays have shape (nell,) and units matching the Cl attributes
+        (multiply by 1e12 for typical plot scaling).
+        """
+        from math import pi as _pi
+
+        # ---- numpy copies of integration arrays ----
+        ell     = _np.array(self.ell_array)
+        ell_fac = ell * (ell + 1) / (2.0 * _pi)
+        z_cls   = _np.array(self.z_array_for_Cls)
+        chi_cls = _np.array(self.chi_array_for_Cls)
+        dchi    = _np.array(self.dchi_dz_array_for_Cls)
+        z_Pk    = _np.array(self.z_array)
+        kPk     = _np.array(self.kPk_array)
+        nell    = len(ell)
+        nz      = len(z_cls)
+
+        if self.model_tSZ:
+            Bl = _np.exp(-0.5 * ell * (ell + 1) * float(self.sig_beam) ** 2)
+        else:
+            Bl = _np.ones(nell)
+
+        mult   = _np.array(self.mult_shear_bias_array)
+        Wk     = _np.array(self.Wk_mat)
+        Wk_eff = _np.array([
+            (1.0 + mult[jb]) * Wk[jb] / _np.maximum(chi_cls ** 2, 1e-10)
+            for jb in range(self.nbins)
+        ])
+        Wy_eff = _np.array(self.Wy_array) / _np.maximum(chi_cls ** 2, 1e-10)
+
+        if self.model_galaxies:
+            Wg = _np.array(self.Wg_mat)
+            Wg_eff = _np.array([
+                Wg[jb] / _np.maximum(dchi * chi_cls ** 2, 1e-10)
+                for jb in range(self.nbins_lens)
+            ])
+
+        def _limber_cl(Pkz_kz, W1, W2, beam_pow=0):
+            Pkz  = _np.maximum(_np.asarray(Pkz_kz), 1e-100)
+            lkPk = _np.log(kPk)
+            lz_Pk  = _np.log(_np.maximum(z_Pk, 1e-10))
+            lz_cls = _np.log(_np.maximum(z_cls, 1e-10))
+            Pkz_zcls = _np.vstack([
+                _np.exp(_np.interp(lz_cls, lz_Pk, _np.log(_np.maximum(Pkz[ik, :], 1e-100))))
+                for ik in range(len(kPk))
+            ])
+            log_Pkz_zcls = _np.log(_np.maximum(Pkz_zcls, 1e-100))
+            k_ell_mat = _np.outer(ell + 0.5, 1.0 / _np.maximum(chi_cls, 1.0))
+            log_k_ell = _np.log(_np.maximum(k_ell_mat, 1e-100))
+            Pk_lz = _np.zeros((nell, nz))
+            for iz in range(nz):
+                Pk_lz[:, iz] = _np.exp(
+                    _np.interp(log_k_ell[:, iz], lkPk, log_Pkz_zcls[:, iz])
+                )
+            if beam_pow == 1:
+                Pk_lz *= Bl[:, None]
+            elif beam_pow == 2:
+                Pk_lz *= (Bl ** 2)[:, None]
+            integrand = (W1 * W2 * chi_cls ** 2 * dchi)[None, :] * Pk_lz
+            Cl = _np.trapz(integrand, z_cls, axis=1)
+            return ell_fac * Cl
+
+        panels = {}
+
+        if self.model_tSZ:
+            panels['yy'] = [{'label': 'yy',
+                'tot': ell_fac * _np.array(self.Cl_y_y_signal_mat),
+                '1h' : _limber_cl(self.Pyy_1h_kz_mat, Wy_eff, Wy_eff, beam_pow=2),
+                '2h' : _limber_cl(self.Pyy_2h_kz_mat, Wy_eff, Wy_eff, beam_pow=2),
+            }]
+            ky_curves = []
+            for jb in range(self.nbins):
+                ky_curves.append({'label': f'b{jb}',
+                    'tot': ell_fac * _np.array(self.Cl_kappa_y_tot_mat[:, jb]),
+                    '1h' : _limber_cl(self.Pym_1h_kz_mat, Wk_eff[jb], Wy_eff, beam_pow=1),
+                    '2h' : _limber_cl(self.Pym_2h_kz_mat, Wk_eff[jb], Wy_eff, beam_pow=1),
+                })
+            panels['ky'] = ky_curves
+
+        kk_curves = []
+        for jb1 in range(self.nbins):
+            for jb2 in range(jb1, self.nbins):
+                kk_curves.append({'label': f'({jb1},{jb2})',
+                    'tot': ell_fac * _np.array(self.Cl_kappa_kappa_tot_mat[:, jb1, jb2]),
+                    '1h' : _limber_cl(self.Pmm_dmb_1h_kz_mat, Wk_eff[jb1], Wk_eff[jb2]),
+                    '2h' : _limber_cl(self.Pmm_dmb_2h_kz_mat, Wk_eff[jb1], Wk_eff[jb2]),
+                })
+        panels['kk'] = kk_curves
+
+        if self.model_tSZ and self.model_galaxies:
+            gy_curves = []
+            for jb in range(self.nbins_lens):
+                gy_curves.append({'label': f'b{jb}',
+                    'tot': ell_fac * _np.array(self.Cl_gal_y_tot_mat[:, jb]),
+                    '1h' : _limber_cl(self.Pgy_1h_kz_mat, Wg_eff[jb], Wy_eff, beam_pow=1),
+                    '2h' : _limber_cl(self.Pgy_2h_kz_mat, Wg_eff[jb], Wy_eff, beam_pow=1),
+                })
+            panels['gy'] = gy_curves
+
+        if self.model_galaxies:
+            gk_curves = []
+            for jb1 in range(self.nbins_lens):
+                for jb2 in range(self.nbins):
+                    gk_curves.append({'label': f'({jb1},{jb2})',
+                        'tot': ell_fac * _np.array(self.Cl_gal_kappa_tot_mat[:, jb1, jb2]),
+                        '1h' : _limber_cl(self.Pgm_1h_kz_mat, Wg_eff[jb1], Wk_eff[jb2]),
+                        '2h' : _limber_cl(self.Pgm_2h_kz_mat, Wg_eff[jb1], Wk_eff[jb2]),
+                    })
+            panels['gk'] = gk_curves
+
+            gg_curves = []
+            for jb1 in range(self.nbins_lens):
+                for jb2 in range(jb1, self.nbins_lens):
+                    gg_curves.append({'label': f'({jb1},{jb2})',
+                        'tot': ell_fac * _np.array(self.Cl_gal_gal_tot_mat[:, jb1, jb2]),
+                        '1h' : _limber_cl(self.Pgg_1h_kz_mat, Wg_eff[jb1], Wg_eff[jb2]),
+                        '2h' : _limber_cl(self.Pgg_2h_kz_mat, Wg_eff[jb1], Wg_eff[jb2]),
+                    })
+            panels['gg'] = gg_curves
+
+        panels['ell'] = ell
+        self.Cl_1h2h_dict = panels
