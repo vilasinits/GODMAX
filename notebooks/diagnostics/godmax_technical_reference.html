@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GODMAX Technical Reference</title>
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+    tags: 'ams',
+    macros: {
+      dd: '\\mathrm{d}',
+      ee: '\\mathrm{e}',
+      ii: '\\mathrm{i}'
+    }
+  },
+  options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg2: #161b22;
+  --bg3: #1c2230;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --accent2: #f78166;
+  --accent3: #7ee787;
+  --accent4: #d2a8ff;
+  --accent5: #ffa657;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --warn: #f0883e;
+  --note-bg: #1c2b3a;
+  --note-border: #388bfd;
+  --warn-bg: #2d1e0e;
+  --warn-border: #f0883e;
+  --code-bg: #161b22;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.65;
+}
+/* Layout */
+.page-wrap { display: flex; min-height: 100vh; }
+nav {
+  width: 270px;
+  min-width: 270px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 20px 0;
+  flex-shrink: 0;
+}
+nav h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  padding: 4px 20px 8px;
+}
+nav a {
+  display: block;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 5px 20px;
+  font-size: 13px;
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+}
+nav a:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+nav a.sub { padding-left: 34px; font-size: 12px; }
+nav .nav-section { margin-top: 14px; }
+main {
+  flex: 1;
+  padding: 40px 60px;
+  max-width: 1100px;
+}
+/* Typography */
+h1 { font-size: 2.2rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.subtitle { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 40px; }
+h2 {
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 56px;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 20px;
+}
+h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent4);
+  margin-top: 32px;
+  margin-bottom: 12px;
+  scroll-margin-top: 20px;
+}
+h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent3);
+  margin-top: 20px;
+  margin-bottom: 8px;
+}
+p { margin-bottom: 12px; }
+ul, ol { margin: 0 0 12px 20px; }
+li { margin-bottom: 4px; }
+strong { color: #fff; }
+/* Code */
+code {
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85em;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--accent5);
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 14px 0;
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.83em;
+  line-height: 1.55;
+  color: var(--accent3);
+}
+/* Callouts */
+.note, .warn, .flag {
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 16px 0;
+  border-left: 4px solid;
+  font-size: 0.9rem;
+}
+.note { background: var(--note-bg); border-color: var(--note-border); }
+.warn { background: var(--warn-bg); border-color: var(--warn-border); }
+.flag { background: #1a1a2e; border-color: var(--accent4); }
+.note strong, .warn strong, .flag strong { display: block; margin-bottom: 4px; }
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 0.875rem;
+}
+th {
+  background: var(--bg3);
+  color: var(--accent);
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+td {
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
+td:first-child { color: var(--accent5); font-family: monospace; font-size: 0.88em; white-space: nowrap; }
+td.default { color: var(--accent3); font-family: monospace; font-size: 0.85em; }
+/* Pipeline diagram */
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 20px 0;
+}
+.pipe-step {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.pipe-box {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 20px;
+  flex: 1;
+  position: relative;
+}
+.pipe-box .file { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; font-family: monospace; }
+.pipe-box .cls { font-size: 1rem; font-weight: 600; color: var(--accent); }
+.pipe-box .desc { font-size: 0.83rem; color: var(--text-muted); margin-top: 4px; }
+.pipe-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+}
+.pipe-connector {
+  width: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.pipe-connector::before {
+  content: '';
+  width: 2px;
+  height: 100%;
+  background: var(--border);
+  position: absolute;
+}
+.pipe-connector::after {
+  content: '▼';
+  font-size: 12px;
+  color: var(--text-muted);
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
+  padding: 4px 0;
+}
+/* Probe grid */
+.probe-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+.probe-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.probe-card .key { font-size: 1.1rem; font-weight: 700; color: var(--accent2); font-family: monospace; }
+.probe-card .name { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+.probe-card .idx { font-size: 0.75rem; color: var(--accent4); margin-top: 4px; }
+/* Section badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.badge-jax { background: #1a3a1a; color: var(--accent3); border: 1px solid #2d6a2d; }
+.badge-numpy { background: #1a2a3a; color: var(--accent); border: 1px solid #2d4a6a; }
+.badge-hardcoded { background: #3a1a1a; color: var(--accent2); border: 1px solid #6a2d2d; }
+/* Divider */
+hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+/* Eq block */
+.eq-block {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 24px;
+  margin: 14px 0;
+  overflow-x: auto;
+  text-align: center;
+}
+.eq-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: right;
+  margin-top: 6px;
+  font-family: monospace;
+}
+/* Collapse */
+details {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 12px 0;
+}
+summary {
+  padding: 12px 18px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+summary::before { content: '▶'; font-size: 0.75rem; transition: transform 0.2s; }
+details[open] summary::before { transform: rotate(90deg); }
+details > *:not(summary) { padding: 0 18px 16px; }
+/* Toc top */
+.toc-top {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin-bottom: 32px;
+}
+.toc-top ol { margin-left: 18px; }
+.toc-top li { margin-bottom: 4px; }
+.toc-top a { color: var(--accent); text-decoration: none; }
+.toc-top a:hover { text-decoration: underline; }
+/* Responsive */
+@media (max-width: 900px) {
+  nav { display: none; }
+  main { padding: 24px 20px; }
+}
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+<!-- Sidebar -->
+<nav>
+  <h2>GODMAX</h2>
+  <div class="nav-section">
+    <h2>Sections</h2>
+    <a href="#overview">Overview</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#pipeline">Modeling Pipeline</a>
+    <a href="#sec-base" class="sub">Base class</a>
+    <a href="#sec-profiles" class="sub">Radial profiles</a>
+    <a href="#sec-pkz" class="sub">3D power spectra</a>
+    <a href="#sec-cls" class="sub">Angular power spectra</a>
+    <a href="#sec-cov" class="sub">Covariance matrices</a>
+    <a href="#sec-xi" class="sub">Real-space ξ</a>
+    <a href="#baryonic">Baryonic suppression</a>
+    <a href="#noise">Noise terms</a>
+    <a href="#params">Parameter reference</a>
+    <a href="#params-cosmo" class="sub">Cosmology</a>
+    <a href="#params-gas" class="sub">Gas profile (BCMP)</a>
+    <a href="#params-gal" class="sub">Galaxies / HOD</a>
+    <a href="#params-halo" class="sub">Halo grid</a>
+    <a href="#params-analysis" class="sub">Analysis</a>
+    <a href="#params-other" class="sub">Other / systematics</a>
+    <a href="#project-params">Project param files</a>
+    <a href="#hardcoded">Hardcoded constants</a>
+    <a href="#flags">Runtime flags</a>
+    <a href="#caveats">Caveats & approximations</a>
+  </div>
+</nav>
+
+<!-- Main content -->
+<main>
+
+<h1>GODMAX Technical Reference</h1>
+<p class="subtitle">
+  <strong>G</strong>as Therm<strong>OD</strong>ynamics and <strong>M</strong>atter Distribution using J<strong>AX</strong> &mdash;
+  Complete implementation map for debugging and development.
+  Generated from source inspection of <code>src/godmax/</code> and <code>param_files/</code>.
+</p>
+
+<div class="toc-top">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#overview">Overview &amp; design philosophy</a></li>
+    <li><a href="#architecture">Class architecture &amp; instantiation</a></li>
+    <li><a href="#pipeline">Full modeling pipeline</a>
+      <ol type="a">
+        <li><a href="#sec-base">Cosmology &amp; grids (base_class)</a></li>
+        <li><a href="#sec-profiles">Radial profiles (Profiles)</a></li>
+        <li><a href="#sec-pkz">3D power spectra (get_Pkz)</a></li>
+        <li><a href="#sec-cls">Angular power spectra (get_Cl)</a></li>
+        <li><a href="#sec-cov">Covariance matrices (get_cov)</a></li>
+        <li><a href="#sec-xi">Real-space correlations (get_xi)</a></li>
+      </ol>
+    </li>
+    <li><a href="#baryonic">Baryonic suppression: where it is and is not applied</a></li>
+    <li><a href="#noise">Noise term definitions</a></li>
+    <li><a href="#params">Complete parameter reference</a></li>
+    <li><a href="#project-params">Project-specific parameter files</a></li>
+    <li><a href="#hardcoded">Hardcoded constants &amp; fixed settings</a></li>
+    <li><a href="#flags">Runtime flags &amp; conditional logic</a></li>
+    <li><a href="#caveats">Known approximations &amp; caveats</a></li>
+  </ol>
+</div>
+
+<!-- ====================================================== -->
+<h2 id="overview">Overview &amp; Design Philosophy</h2>
+
+<p>GODMAX is a fully differentiable JAX-based halo model framework. All arrays are JAX arrays unless noted otherwise. The covariance matrices (<code>get_cov</code>) are the only component that uses NumPy/SciPy, because they are not differentiated.</p>
+
+<p>Key design choices:</p>
+<ul>
+  <li><strong>Single-inheritance chain</strong>: each class extends the previous; parent objects are passed as <code>*_obj</code> arguments and copied via <code>self.__dict__.update()</code> to avoid recomputation.</li>
+  <li><strong>All shapes frozen at construction time</strong>: because methods are <code>@partial(jit, static_argnums=(0,))</code>, array dimensions from <code>halo_params_dict</code> cannot change after instantiation.</li>
+  <li><strong>Grid-indexed vectorization</strong>: <code>get_vmapped_func(func, n)</code> builds nested <code>vmap</code> calls over integer index arrays (<code>jnp.arange(nz)</code>, etc.), not the physical values directly.</li>
+  <li><strong><code>jax_enable_x64</code> is required</strong>: halo model integrals are numerically sensitive to float32 rounding.</li>
+</ul>
+
+<!-- ====================================================== -->
+<h2 id="architecture">Class Architecture &amp; Instantiation</h2>
+
+<div class="pipeline">
+  <div class="pipe-step">
+    <div class="pipe-box">
+      <div class="file">base_class.py</div>
+      <div class="cls">base_class</div>
+      <div class="desc">Cosmology object (jax_cosmo), grids (z, M, k, r, ℓ), linear P(k,z), n(z) loading, SHMR/BCMP params ingestion</div>
+    </div>
+  </div>
+  <div class="pipe-connector"></div>
+  <div class="pipe-step">
+    <div class="pipe-box">
+      <div class="file">get_radial_profiles.py</div>
+      <div class="cls">Profiles(base_class)</div>
+      <div class="desc">HMF σ(M,z), dN/dlnM; concentration c(M,z); NFW, gas (BCMP), stellar, CLM, pressure profiles on (nr, nz, nM) grids</div>
+    </div>
+  </div>
+  <div class="pipe-connector"></div>
+  <div class="pipe-step">
+    <div class="pipe-box">
+      <div class="file">get_Pkzs.py</div>
+      <div class="cls">get_Pkz(Profiles)</div>
+      <div class="desc">FFTlog ρ(r)→ũ(k); 1-halo &amp; 2-halo P(k,z); halofit suppression; assembles Pmm, Pym, Pgg, Pge, Pgy, Pyy</div>
+    </div>
+  </div>
+  <div class="pipe-connector"></div>
+  <div class="pipe-step">
+    <div class="pipe-box">
+      <div class="file">get_Cls.py</div>
+      <div class="cls">get_Cl(get_Pkz)</div>
+      <div class="desc">Limber projection P(k,z)→C(ℓ); WL kernel W_κ; NLA; galaxy &amp; tSZ window functions; 2D interpolators; beam B_ℓ</div>
+    </div>
+  </div>
+  <div class="pipe-connector"></div>
+  <div class="pipe-step">
+    <div class="pipe-box">
+      <div class="file">get_covs.py</div>
+      <div class="cls">get_cov(get_Cl)</div>
+      <div class="desc">Gaussian + non-Gaussian (trispectrum) covariance matrices for all probe pairs; real-space two-Bessel transform</div>
+    </div>
+  </div>
+</div>
+
+<p>Two independent branches stem from <code>Profiles</code>:</p>
+<ul>
+  <li><code>get_xi(get_Cl)</code> — real-space correlation functions ξ₊, ξ₋, γ_ty via Hankel transforms (<code>get_Xis.py</code>)</li>
+  <li><code>setup_sim_map / get_sim_map</code> — HEALPix map generation (<code>get_sim_maps.py</code>)</li>
+</ul>
+
+<h3>Standard instantiation pattern</h3>
+<pre>
+# Load and merge param files
+import yaml
+from deepmerge import always_merger
+
+default = yaml.safe_load(open('param_files/params_default.yaml'))
+project = yaml.safe_load(open('param_files/DESxACT/params_v3.yaml'))
+merged  = always_merger.merge(default, project)
+
+sim_params, halo_params, analysis, other_params = (
+    merged['sim_params'], merged['halo_params'],
+    merged['analysis'],   merged['other_params']
+)
+
+# Build the chain (pass previous object to skip recomputation)
+from godmax.base_class           import base_class
+from godmax.get_radial_profiles  import Profiles
+from godmax.get_Pkzs             import get_Pkz
+from godmax.get_Cls              import get_Cl
+from godmax.get_covs             import get_cov
+
+base  = base_class(sim_params, halo_params, analysis, other_params)
+profs = Profiles(sim_params, halo_params, analysis, other_params, base_class_obj=base)
+pkz   = get_Pkz(sim_params, halo_params, analysis, other_params, Profiles_obj=profs)
+cl    = get_Cl(sim_params, halo_params, analysis, other_params, Pkz_obj=pkz)
+cov   = get_cov(sim_params, halo_params, analysis, other_params, Cl_obj=cl)
+</pre>
+
+<div class="note">
+  <strong>Probe index convention</strong> — <code>cached_power_spectra[4, 4, nell, nz_for_Cls]</code>
+  and all internal probe integer arguments use:
+  0 = κ (CMB lensing / WL, baryonified matter),
+  1 = κ<sub>NFW</sub> (lensing, NFW dark matter only, i.e. halofit),
+  2 = g (galaxies),
+  3 = y (Compton-y tSZ).
+</div>
+
+<div class="probe-grid">
+  <div class="probe-card"><div class="key">kk</div><div class="name">CMB lensing auto</div><div class="idx">probes 0×0</div></div>
+  <div class="probe-card"><div class="key">ky</div><div class="name">Lensing × tSZ</div><div class="idx">probes 0×3</div></div>
+  <div class="probe-card"><div class="key">yy</div><div class="name">tSZ auto</div><div class="idx">probes 3×3</div></div>
+  <div class="probe-card"><div class="key">gg</div><div class="name">Galaxy auto</div><div class="idx">probes 2×2</div></div>
+  <div class="probe-card"><div class="key">gy</div><div class="name">Galaxy × tSZ</div><div class="idx">probes 2×3</div></div>
+  <div class="probe-card"><div class="key">gk</div><div class="name">Galaxy × lensing</div><div class="idx">probes 2×0</div></div>
+</div>
+
+<!-- ====================================================== -->
+<h2 id="pipeline">Full Modeling Pipeline</h2>
+
+<!-- ---- base class ---- -->
+<h3 id="sec-base">1. Cosmology &amp; grids — <code>base_class</code> <span class="badge badge-jax">JAX</span></h3>
+
+<p>The constructor calls <code>read_all_input()</code> which ingests all four parameter dicts, then calls <code>get_power_spectra_cosmo()</code>.</p>
+
+<h4>Grid construction</h4>
+<table>
+  <tr><th>Attribute</th><th>Definition</th><th>Shape</th></tr>
+  <tr><td>z_array</td><td>Linear from <code>zmin</code> to <code>zmax</code>, <code>nz</code> points</td><td>[nz]</td></tr>
+  <tr><td>M_array</td><td>Log-space from 10<sup>lg10_Mmin</sup> to 10<sup>lg10_Mmax</sup>, <code>nM</code> pts (M_sun/h)</td><td>[nM]</td></tr>
+  <tr><td>k_array / kPk_array</td><td>Log-space <code>kmin→kmax</code>, <code>nk</code> pts (h/Mpc)</td><td>[nk]</td></tr>
+  <tr><td>r_array</td><td>Log-space <code>rmin→rmax</code>, <code>nr</code> pts (Mpc/h)</td><td>[nr]</td></tr>
+  <tr><td>ell_array</td><td>Log-space <code>ellmin→ellmax</code>, <code>nell</code> pts</td><td>[nell]</td></tr>
+  <tr><td>z_array_for_Cls</td><td>Linear <code>zmin_for_Cls→zmax_for_Cls</code>, <code>nz_for_Cls</code> pts (higher resolution for Limber)</td><td>[nz_for_Cls]</td></tr>
+</table>
+
+<h4>Cosmological background</h4>
+<p>A <code>jax_cosmo.Cosmology</code> object is created. Then:</p>
+<ul>
+  <li><code>plin_kz_mat[nk, nz]</code> — linear matter power spectrum via <code>jax_cosmo</code> or symbolic regression</li>
+  <li><code>chi_z_array</code>, <code>dchi_dz_array</code> — comoving distances and their z-derivatives</li>
+  <li><code>Da_z_array</code> — angular diameter distances</li>
+  <li><code>growth_factor_z_array</code> — linear growth factor D(z)</li>
+  <li><code>rho_m_bar</code> — mean matter density today (M_sun/Mpc³): $\rho_{m,0} = \Omega_m \cdot \rho_{\rm crit,0}$</li>
+</ul>
+
+<p>Critical and matter densities as functions of redshift:</p>
+<div class="eq-block">
+  $$E(z) = \sqrt{\Omega_m(1+z)^3 + \Omega_\Lambda}, \qquad \rho_c(z) = \rho_{\rm crit,0}\,E(z)^2, \qquad \rho_m(z) = \rho_{m,0}(1+z)^3$$
+</div>
+
+<!-- ---- profiles ---- -->
+<h3 id="sec-profiles">2. Radial profiles — <code>Profiles</code> <span class="badge badge-jax">JAX</span></h3>
+
+<p>Profiles are computed on the full 3D grid <code>[nr, nz, nM]</code>. The initialization calls these methods in order:</p>
+
+<ol>
+  <li><code>setup_hmf()</code> — σ(M,z) and ν(M,z)</li>
+  <li><code>get_hmf()</code> — halo mass function dN/dlnM</li>
+  <li><code>get_conc_Mz()</code> — concentration–mass relation c(M,z)</li>
+  <li><code>setup_main_calc()</code> — gas geometry parameters θ<sub>ej</sub>(M,z), θ<sub>co</sub>(M,z)</li>
+  <li><code>get_DMO_profiles()</code> — NFW profiles</li>
+  <li><code>run_stars_calc()</code> — stellar density (HOD or simple)</li>
+  <li><code>run_gas_calc()</code> — gas density profiles (BCMP)</li>
+  <li><code>run_clm_calc()</code> — collision-less matter with backreaction</li>
+  <li><code>run_dmb_calc()</code> — total dark matter + baryons</li>
+  <li><code>run_pressure_calc()</code> — electron pressure + Compton-y (if <code>model_tSZ=True</code>)</li>
+</ol>
+
+<h4>Halo mass function</h4>
+<p>The velocity dispersion σ(M,z) is computed from the linear power spectrum:</p>
+<div class="eq-block">
+  $$\sigma^2(M,z) = \frac{1}{2\pi^2}\int_0^\infty k^2\,P_{\rm lin}(k,z)\,\tilde{W}^2(kR)\,\dd k, \qquad \tilde{W}(x) = \frac{3(\sin x - x\cos x)}{x^3}$$
+  <div class="eq-label">computed via logspace trapezoidal integral, N=64 points</div>
+</div>
+<p>Peak height: $\nu(M,z) = \delta_c / \sigma(M,z)$ with $\delta_c = 1.68647$ (hardcoded).</p>
+
+<p>Two HMF models are available via <code>hmf_model</code>:</p>
+
+<details>
+  <summary>Tinker 2008 (T08) — dN/dlnM</summary>
+  <p>Uses a fit to simulations for halo overdensity Δ<sub>200c</sub>. Parameters α, A, a, b, c are tabulated at specific Δ values and interpolated.</p>
+  <div class="eq-block">
+    $$\frac{\dd N}{\dd\ln M} = -\frac{\rho_m}{M}\frac{\dd\ln\sigma^{-1}}{\dd\ln M}\,f(\sigma), \qquad f(\sigma) = A\left[\left(\frac{\sigma}{b}\right)^{-a} + 1\right]e^{-c/\sigma^2}$$
+  </div>
+</details>
+
+<details>
+  <summary>Tinker 2010 (T10) — dN/dlnM [default]</summary>
+  <p>Includes explicit redshift evolution. Uses ν = δ<sub>c</sub>/σ formulation:</p>
+  <div class="eq-block">
+    $$f(\nu) = \alpha\left[1 + (\beta\nu)^{-2\phi}\right]\nu^{2\eta}\exp\!\left(-\tfrac{\gamma}{2}\nu^2\right)$$
+  </div>
+  <p>Parameters α, β, γ, φ, η depend on Δ and redshift.</p>
+</details>
+
+<h4>Concentration–mass relation</h4>
+<p>Three models via <code>conc_model</code>:</p>
+<table>
+  <tr><th>Model</th><th>Formula</th><th>Notes</th></tr>
+  <tr><td>Duffy08</td><td>$c = 5.71\,(M/2\times10^{12})^{-0.084}(1+z)^{-0.47}$</td><td>Simple power law; default</td></tr>
+  <tr><td>Prada12</td><td>Complex fit involving ν(M,z); velocity-ratio correction</td><td>Accounts for upturn at high M</td></tr>
+  <tr><td>Diemer15</td><td>Function of the local power spectrum slope n(k_peak)</td><td>More physically motivated; used for Pge analysis</td></tr>
+</table>
+
+<h4>NFW profile</h4>
+<div class="eq-block">
+  $$\rho_{\rm NFW}(r) = \frac{\rho_s}{(r/r_s)(1+r/r_s)^2}, \qquad r_s = r_{200c}/c$$
+</div>
+<p>Optional truncation (<code>nfw_trunc=True</code>, default): smooth cutoff applied at $r_t = \varepsilon_{rt}\,r_{200c}$:</p>
+<div class="eq-block">
+  $$\rho_{\rm NFW,trunc}(r) = \rho_{\rm NFW}(r) \cdot \left[1 + (r/r_t)^2\right]^{-2}$$
+  <div class="eq-label">ε_rt = 4.0 (hardcoded default, overridable via epsilon_rt)</div>
+</div>
+
+<h4>Gas profile (BCMP — Schneider+19 / Pandey+24)</h4>
+<p>A two-component profile with an inner core and an outer ejected component:</p>
+<div class="eq-block">
+  $$\rho_{\rm gas}(r) \propto \frac{1}{\left[1 + (r/r_{\rm co})^2\right]^{\beta/2} \left[1 + (r/r_{\rm ej})^{\gamma_\rho}\right]^{(\delta-\beta)/\gamma_\rho}}$$
+  <div class="eq-label">γ_rhogas = 2.0, δ_rhogas = 7.0 are hardcoded defaults (overridable)</div>
+</div>
+<p>The ejection radius and core radius evolve with halo mass and redshift:</p>
+<div class="eq-block">
+  $$r_{\rm ej}(M,z) = \theta_{\rm ej}(M,z)\cdot r_{200c}, \qquad \theta_{\rm ej} = \theta_{{\rm ej},0}\left(\frac{M}{M_{*,\rm ej}}\right)^{\nu_{\theta M}}\!(1+z)^{\nu_{\theta z}}$$
+  $$r_{\rm co}(M,z) = \theta_{\rm co}(M,z)\cdot r_{200c}, \qquad \theta_{\rm co} = \theta_{{\rm co},0}\left(\frac{M}{M_{*,\rm co}}\right)^{\nu_{\rm co,M}}\!(1+z)^{\nu_{\rm co,z}}$$
+</div>
+<p>The outer slope parameter β evolves with mass:</p>
+<div class="eq-block">
+  $$\beta(M,z) = \frac{3\,(M/M_c)^{\mu_\beta}}{1 + (M/M_c)^{\mu_\beta}}, \qquad M_c = 10^{\log_{10}M_{c,0}}\left(\frac{M}{10^{\log_{10}M_{*,0}}}\right)^{\nu_M}(1+z)^{\nu_z}$$
+</div>
+
+<h4>Backreaction (adiabatic contraction)</h4>
+<p>When <code>backreaction=True</code>, the dark matter halo is compressed in response to baryons. The compression factor ζ is found by solving:</p>
+<div class="eq-block">
+  $$\frac{r_f}{r_i} - 1 - a_\zeta\!\left[\left(\frac{M_i(r_i)}{M_f(r_f)}\right)^{n_\zeta} - 1\right] = 0$$
+  <div class="eq-label">Solved iteratively; M_i = M_NFW(r_i), M_f = f_clm·M_NFW(r_f/ζ) + M_cga(r_f) + M_gas(r_f)</div>
+</div>
+
+<h4>Pressure profile &amp; Compton-y</h4>
+<p>Thermal pressure is derived under hydrostatic equilibrium with non-thermal pressure support fraction $f_{nt}$:</p>
+<div class="eq-block">
+  $$f_{nt}(r) = \alpha_{nt}\left(\frac{r}{r_{500c}}\right)^{\beta_{nt}}(1+z)^{n_{nt}}, \qquad P_{\rm th} = P_{\rm tot}(1-f_{nt})$$
+</div>
+<p>Electron pressure: $P_e = P_{\rm th}/1.932$ (hardcoded mean molecular weight factor).</p>
+<p>3D Compton-y parameter (stored in <code>y3d_mat[nr, nz, nM]</code>):</p>
+<div class="eq-block">
+  $$y_{\rm 3d}(r) = \frac{\sigma_T}{m_e c^2}\int P_e\,\dd\ell, \qquad \text{coefficient} \approx 5.03\times10^{-10}\;\text{(Mpc to cm conversion)}$$
+</div>
+
+<h4>HOD galaxy model (Leauthaud+2011 SHMR)</h4>
+<p>Central occupation:</p>
+<div class="eq-block">
+  $$N_{\rm cen}(M_h) = \frac{1}{2}\left[1 - \text{erf}\!\left(\frac{\log_{10}M_{*,\rm thresh} - \log_{10}M_*(M_h)}{\sqrt{2}\,\sigma_{\log M_*}}\right)\right], \quad \sigma_{\log M_*} = 0.25\text{ (default)}$$
+</div>
+<p>Satellite occupation:</p>
+<div class="eq-block">
+  $$N_{\rm sat}(M_h) = N_{\rm cen}(M_h)\left(\frac{M_h}{M_{\rm sat}}\right)^\alpha \exp\!\left(-\frac{M_{\rm cut}}{M_h}\right)$$
+</div>
+<p>The threshold mass $M_{*,\rm thresh}$ is solved numerically (binary search) to match the input comoving galaxy number density <code>nbar_gal_comoving_val</code>.</p>
+
+<!-- ---- pkz ---- -->
+<h3 id="sec-pkz">3. 3D power spectra — <code>get_Pkz</code> <span class="badge badge-jax">JAX</span></h3>
+
+<h4>FFTLog profile transform</h4>
+<p>Real-space profiles are Fourier-transformed via <code>mcfitjax.xi2P</code> (FFTLog with <code>lowring=True</code>):</p>
+<div class="eq-block">
+  $$\tilde{u}(k) = 4\pi\int_0^\infty r^2\,\frac{\rho(r)}{M_{\rm tot}}\,j_0(kr)\,\dd r$$
+  <div class="eq-label">Computed for: dmb, NFW, CLM (galaxies), y (tSZ), n_e (electrons)</div>
+</div>
+<p>The FFTLog output is on a non-uniform k-grid; it is then log-log interpolated onto <code>kPk_array</code>.</p>
+
+<h4>Galaxy occupation kernels</h4>
+<p>Two distinct galaxy Fourier kernels are built from the CLM (collision-less matter) profile $\tilde{u}_{\rm clm}(k)$:</p>
+<div class="eq-block">
+  $$\tilde{u}_{g,\rm cross}(k) = \frac{N_{\rm cen} + N_{\rm sat}\,\tilde{u}_{\rm clm}(k)}{\bar{n}(z)}, \qquad \tilde{u}_{g,\rm auto}(k) = \frac{2N_{\rm cen}N_{\rm sat}\,\tilde{u}_{\rm clm}(k) + [N_{\rm sat}\,\tilde{u}_{\rm clm}(k)]^2}{\bar{n}(z)^2}$$
+  <div class="eq-label">u_g_cross used for P_gm cross-terms; u_g_auto used for P_gg 1-halo term (Poisson shot noise included)</div>
+</div>
+
+<h4>Large-scale 2-halo matter bias correction</h4>
+<p>When <code>do_corr_2h_mm=True</code>, mass conservation is enforced: halos below <code>M_min</code> contribute a white-noise correction to the bias:</p>
+<div class="eq-block">
+  $$b_{m,\rm LS}(z) = \int_{M_{\rm min}}^{M_{\rm max}} \frac{M}{\rho_{m,0}}\,\frac{\dd N}{\dd\ln M}\,b(M,z)\,\dd\ln M, \qquad b_{\rm corr} = 1 - b_{m,\rm LS}$$
+  <div class="eq-label">b_dmb_kz = b_2h(k,z) + (1 - b_LS); applied to both dmb and NFW</div>
+</div>
+
+<h4>1-halo and 2-halo terms</h4>
+<div class="eq-block">
+  $$P_{\rm 1H}(k,z) = \int_{M_{\rm min}}^{M_{\rm max}} \tilde{u}_A(k,M,z)\,\tilde{u}_B(k,M,z)\,\frac{\dd N}{\dd\ln M}\,\dd\ln M$$
+  $$P_{\rm 2H}(k,z) = b_A(k,z)\,b_B(k,z)\,P_{\rm lin}(k,z)$$
+</div>
+
+<p>The 2-halo bias for each field X is:</p>
+<div class="eq-block">
+  $$b_X(k,z) = \int \tilde{u}_X(k,M,z)\,b(M,z)\,\frac{\dd N}{\dd\ln M}\,\dd\ln M$$
+</div>
+
+<p>The Tinker 2010 halo bias (used for all fields) is:</p>
+<div class="eq-block">
+  $$b(\nu) = 1 - \frac{A\nu^a}{\nu^a+\delta_c^a} + B\nu^b + C\nu^c$$
+  <div class="eq-label">Parameters A, a, B, b, C, c depend on log₁₀Δ (see Tinker et al. 2010)</div>
+</div>
+
+<h4>Total power spectra assembled in <code>get_Pkz.__init__</code></h4>
+<table>
+  <tr><th>Attribute</th><th>Formula</th><th>Baryonic supp?</th></tr>
+  <tr><td><code>Pmm_nfw_tot_mat</code></td><td>P<sub>1H,NFW</sub> + P<sub>2H,NFW</sub></td><td class="default">No (used for suppression denominator)</td></tr>
+  <tr><td><code>Pmm_dmb_tot_mat</code></td><td>P<sub>1H,dmb</sub> + P<sub>2H,dmb</sub></td><td class="default">No (halo model only)</td></tr>
+  <tr><td><code>Pmm_sup_tot_mat</code></td><td>P<sub>halofit</sub> / P<sub>NFW</sub></td><td class="default">The suppression factor itself</td></tr>
+  <tr><td><code>Pmm_tot_mat</code></td><td>P<sub>dmb</sub> × S(k,z) &nbsp;[or P<sub>halofit</sub> if model_matter='halofit']</td><td class="default"><strong>Yes</strong></td></tr>
+  <tr><td><code>Pym_tot_mat</code></td><td>(P<sub>1H,ym</sub><sup>α_ky</sup> + P<sub>2H,ym</sub><sup>α_ky</sup>)<sup>1/α_ky</sup></td><td class="default">Only if tSZ_transition_model='response'</td></tr>
+  <tr><td><code>Pyy_tot_kz_mat</code></td><td>P<sub>1H,yy</sub> + P<sub>2H,yy</sub></td><td class="default"><strong>No</strong></td></tr>
+  <tr><td><code>Pgg_tot_mat</code></td><td>(P<sub>1H,gg</sub> + P<sub>2H,gg</sub>) × S(k,z)</td><td class="default"><strong>Yes</strong></td></tr>
+  <tr><td><code>Pgm_tot_mat</code></td><td>(P<sub>1H,gm</sub> + P<sub>2H,gm</sub>) × S(k,z)</td><td class="default"><strong>Yes</strong></td></tr>
+  <tr><td><code>Pgy_tot_mat</code></td><td>(P<sub>1H,gy</sub><sup>α_gy</sup> + P<sub>2H,gy</sub><sup>α_gy</sup>)<sup>1/α_gy</sup></td><td class="default">Only if tSZ_transition_model='response'</td></tr>
+  <tr><td><code>Pge_tot_mat</code></td><td>(P<sub>1H,ge</sub> + P<sub>2H,ge</sub>) × S(k,z)</td><td class="default"><strong>Yes</strong></td></tr>
+</table>
+
+<p>where $S(k,z) \equiv P_{\rm halofit}(k,z) / P_{\rm NFW,tot}(k,z)$ is the baryonic suppression factor.</p>
+
+<!-- ---- cls ---- -->
+<h3 id="sec-cls">4. Angular power spectra — <code>get_Cl</code> <span class="badge badge-jax">JAX</span></h3>
+
+<h4>Limber projection</h4>
+<div class="eq-block">
+  $$C_\ell^{AB} = \int_0^{z_{\rm max}} \dd z\,\frac{\dd\chi}{\dd z}\frac{1}{\chi^2(z)}\,W_A(z)\,W_B(z)\,P_{AB}\!\left(k = \frac{\ell+\tfrac{1}{2}}{\chi(z)},\, z\right)$$
+  <div class="eq-label">Integrated over z_array_for_Cls using trapezoidal rule</div>
+</div>
+<p>The 3D power spectra are evaluated via 2D log-log interpolators (<code>interpax.Interpolator2D</code>) in (log ℓ, z) space.</p>
+
+<h4>Window functions</h4>
+<table>
+  <tr><th>Probe</th><th>Window W(z)</th><th>Notes</th></tr>
+  <tr><td>κ (WL)</td><td>$W_\kappa(z,b) = \frac{3H_0^2\Omega_m}{2c^2}(1+z)\chi(z)\int_z^{z_{\rm max}}\!\frac{\chi(z')-\chi(z)}{\chi(z')}\frac{\dd n}{\dd z'}\dd z'$</td><td>Integrated with 128 Gauss–Legendre pts; photo-z bias applied to n(z)</td></tr>
+  <tr><td>IA (NLA)</td><td>$W_{\rm IA}(z,b) = -A_{\rm IA}\,\rho_{m,\rm bar}\,C_1\,D^{-1}(z)\left(\frac{1+z}{1+z_0}\right)^{\eta_{\rm IA}}\frac{\dd n}{\dd z}$</td><td>Added to W_κ; $C_1\rho_{m,\rm bar} = C_{1,\rho_{\rm crit}}\Omega_m$</td></tr>
+  <tr><td>g (galaxies)</td><td>$W_g(z,b) = n_{\rm lens}(z,b) / \int n_{\rm lens}\,\dd z$</td><td>Normalized to unit integral; interpolated to z_array_for_Cls</td></tr>
+  <tr><td>y (tSZ)</td><td>$W_y(z) = 1/(1+z)$</td><td>Comoving volume weighting; same for all bins</td></tr>
+</table>
+
+<h4>Beam suppression</h4>
+<p>A Gaussian beam is applied to tSZ-containing power spectra:</p>
+<div class="eq-block">
+  $$B_\ell = \exp\!\left(-\frac{\ell(\ell+1)\sigma_{\rm beam}^2}{2}\right), \qquad \sigma_{\rm beam} = \frac{\theta_{\rm FWHM}[\rm arcmin]}{60\,\sqrt{8\ln 2}\cdot(180/\pi)}$$
+</div>
+<ul>
+  <li><strong>ky cross-spectrum</strong>: beam power 1 — $P_{ky}(\ell,z) \to P_{ky}\cdot B_\ell$ (applied to <code>Pkym_lz_mat</code>)</li>
+  <li><strong>gy cross-spectrum</strong>: beam power 1 — $P_{gy}(\ell,z) \to P_{gy}\cdot B_\ell$ (applied to <code>Pkgy_lz_mat</code>)</li>
+  <li><strong>yy auto-spectrum</strong>: beam power 2 — $P_{yy}(\ell,z) \to P_{yy}\cdot B_\ell^2$ (inside <code>get_Pkyy_lz</code>)</li>
+</ul>
+
+<h4>tSZ auto-spectrum noise handling</h4>
+<p>The yy noise is not computed from first principles. Three cases:</p>
+<ol>
+  <li><code>yy_total_ell_fname</code> provided → load C<sub>ℓ,yy</sub><sup>tot</sup> from file; noise = total − signal</li>
+  <li><code>yy_noise_ell_fname</code> provided → load noise; total = signal + noise</li>
+  <li>Neither → noise = 0; total = theory only (prints warning)</li>
+</ol>
+
+<h4>Cached power spectra</h4>
+<p><code>cached_power_spectra[4, 4, nell, nz_for_Cls]</code> stores the Limber-projected P<sub>ℓz</sub> for fast access in covariance calculations. It is populated as:</p>
+<pre>
+[0,0] = P_κκ (baryonified matter)    [1,1] = P_κκ,NFW (halofit)
+[0,3] = P_κy × B_ℓ                   [3,3] = P_yy × B_ℓ²
+[2,0] = P_gκ                          [2,2] = P_gg
+[2,3] = P_gy × B_ℓ                    [2,1] = P_g,κ_NFW
+</pre>
+
+<!-- ---- cov ---- -->
+<h3 id="sec-cov">5. Covariance matrices — <code>get_cov</code> <span class="badge badge-numpy">NumPy / SciPy</span></h3>
+
+<div class="note">
+  <strong>Not JAX-differentiated.</strong> The covariance computation uses <code>numpy</code> and <code>scipy.integrate.simpson</code>. This is intentional: covariances are treated as fixed (data compression) and are not differentiated.
+</div>
+
+<h4>Gaussian (Knox) covariance</h4>
+<div class="eq-block">
+  $$\mathrm{Cov}_G^{(AB)(CD)}(\ell) = \frac{\delta_{\ell\ell'}}{f_{\rm sky}(2\ell+1)\Delta\ell}\left[\tilde{C}_\ell^{AC}\,\tilde{C}_\ell^{BD} + \tilde{C}_\ell^{AD}\,\tilde{C}_\ell^{BC}\right]$$
+  <div class="eq-label">where $\tilde{C}_\ell = C_\ell^{\rm signal} + N_\ell^{\rm noise}$; Δℓ = band width of each ℓ bin</div>
+</div>
+
+<h4>Non-Gaussian (trispectrum) covariance</h4>
+<div class="eq-block">
+  $$\mathrm{Cov}_{NG}^{(AB)(CD)}(\ell_1,\ell_2) = \frac{1}{4\pi\,f_{\rm sky}}\,T^{ABCD}(\ell_1,\ell_2)$$
+  $$T^{ABCD}(\ell_1,\ell_2) = \int\!\dd z\,\frac{\dd\chi}{\dd z}\frac{1}{\chi^6(z)}\int\!\dd\ln M\,\frac{\dd N}{\dd\ln M}\,u_A^{\ell_1}\,u_B^{\ell_1}\,u_C^{\ell_2}\,u_D^{\ell_2}$$
+  <div class="eq-label">u_X^ℓ = profile kernel at k_ℓ(z) weighted by window; evaluated at (ℓ+0.5)/χ(z)</div>
+</div>
+
+<p>Profile kernels for trispectrum (pre-computed at init):</p>
+<ul>
+  <li><code>uy_l_for_cov</code>: $u_y(\ell,z,M) = \tilde{u}_y(k_\ell,z,M)\cdot B_\ell \cdot W_y(z)/\chi^2(z)$</li>
+  <li><code>ukappa_l_for_cov[nbins]</code>: $u_\kappa(\ell,z,M,b) = \tilde{u}_{\rm dmb}(k_\ell,z,M)\cdot M_{\rm tot}/\rho_{m,0}\cdot W_\kappa(z,b)/\chi^2(z)$</li>
+  <li><code>ug_l_for_cov[nbins_lens]</code>: $u_g(\ell,z,M,b) = \tilde{u}_{g,\rm cross}(k_\ell,z,M)\cdot W_g(z,b)/\chi^2(z)$</li>
+</ul>
+
+<h4>Total covariance</h4>
+<div class="eq-block">
+  $$\mathrm{Cov}_{\rm tot} = \mathrm{Cov}_G + \mathrm{Cov}_{NG}$$
+</div>
+<p>The result is symmetrized and negative eigenvalues are clipped to zero.</p>
+
+<h4>Real-space covariance (two-Bessel transform)</h4>
+<p>When <code>analysis_coords='real'</code>, the Fourier-space covariance is converted to angular correlation function space via:</p>
+<div class="eq-block">
+  $$\mathrm{Cov}_\xi(\theta_1,\theta_2) = \int\frac{\dd\ell\,\ell}{2\pi}\,\frac{\dd\ell'\,\ell'}{2\pi}\,J_\nu(\ell\theta_1)\,J_\nu(\ell'\theta_2)\,\mathrm{Cov}_G(\ell,\ell')$$
+</div>
+<p>Implemented via <code>helpers/twobessel.py</code> using FFT-based Hankel transforms with Bessel function orders (ν₁,ν₂): (0,0) for ξ₊, (4,4) for ξ₋, (2,2) for γ_ty.</p>
+
+<h4>Sky fraction dictionary</h4>
+<p>Each probe pair has its own <code>fsky</code>, set in <code>analysis_dict</code>:</p>
+<pre>
+fsky_yy, fsky_ky, fsky_kk, fsky_yg, fsky_kg, fsky_gg
+</pre>
+
+<!-- ---- xi ---- -->
+<h3 id="sec-xi">6. Real-space correlation functions — <code>get_xi</code> <span class="badge badge-jax">JAX</span></h3>
+<div class="eq-block">
+  $$\xi_+(\theta) = \int_0^\infty\frac{\dd\ell\,\ell}{2\pi}\,C_\ell^{\kappa\kappa}\,J_0(\ell\theta), \quad
+  \xi_-(\theta) = \int_0^\infty\frac{\dd\ell\,\ell}{2\pi}\,C_\ell^{\kappa\kappa}\,J_4(\ell\theta), \quad
+  \gamma_t(\theta) = \int_0^\infty\frac{\dd\ell\,\ell}{2\pi}\,C_\ell^{\kappa y}\,J_2(\ell\theta)$$
+</div>
+<p>Computed via <code>mcfitjax.transforms.Hankel</code> with <code>lowring=True</code>, <code>q=1.0</code>. Output is in arcminutes.</p>
+
+<!-- ====================================================== -->
+<h2 id="baryonic">Baryonic Suppression: Where It Is and Is Not Applied</h2>
+
+<p>The suppression factor is defined as:</p>
+<div class="eq-block">
+  $$S(k,z) = \frac{P_{\rm halofit}(k,z)}{P_{\rm NFW,tot}(k,z)} = \frac{P_{\rm halofit}}{P_{\rm 1H,NFW} + P_{\rm 2H,NFW}}$$
+</div>
+
+<table>
+  <tr><th>Spectrum</th><th>Suppression applied?</th><th>Rationale / Note</th></tr>
+  <tr><td>P<sub>mm</sub> (matter auto)</td><td><strong>Yes</strong></td><td>P<sub>dmb</sub> × S(k,z). If model_matter='halofit', S is 1 (uses pure halofit)</td></tr>
+  <tr><td>P<sub>gg</sub> (galaxy auto)</td><td><strong>Yes</strong></td><td>(P<sub>1H</sub>+P<sub>2H</sub>)×S; baryons affect galaxy distribution</td></tr>
+  <tr><td>P<sub>gm</sub> (galaxy × matter)</td><td><strong>Yes</strong></td><td>(P<sub>1H</sub>+P<sub>2H</sub>)×S</td></tr>
+  <tr><td>P<sub>ge</sub> (galaxy × electrons)</td><td><strong>Yes</strong></td><td>(P<sub>1H</sub>+P<sub>2H</sub>)×S</td></tr>
+  <tr><td>P<sub>ym</sub> (tSZ × matter)</td><td><strong>No</strong> (default)</td><td>Only applied if <code>tSZ_transition_model='response'</code>; otherwise poweradd formula used</td></tr>
+  <tr><td>P<sub>yy</sub> (tSZ auto)</td><td><strong>No</strong></td><td>Pure 1H+2H; no suppression factor ever applied</td></tr>
+  <tr><td>P<sub>gy</sub> (galaxy × tSZ)</td><td><strong>No</strong> (default)</td><td>Same as P<sub>ym</sub> — poweradd only; response model applies suppression</td></tr>
+</table>
+
+<div class="warn">
+  <strong>Design decision — tSZ spectra and suppression:</strong>
+  The <code>poweradd</code> model (default) combines 1H+2H via $P = (P_{1H}^\alpha + P_{2H}^\alpha)^{1/\alpha}$ and applies <em>no suppression factor</em> for tSZ-containing spectra. The <code>response</code> model additionally multiplies by S(k,z). The physical motivation is that the tSZ signal is sensitive to the baryon distribution directly via the pressure profile, and the suppression factor was calibrated for matter, not y. Using <code>poweradd</code> avoids double-counting.
+</div>
+
+<!-- ====================================================== -->
+<h2 id="noise">Noise Term Definitions</h2>
+
+<h4>Shape noise (weak lensing κ)</h4>
+<div class="eq-block">
+  $$N_\ell^{\kappa\kappa}(b,b') = \delta_{bb'}\,\frac{\sigma_\varepsilon^2(b)}{n_{\rm eff}(b)\,\Omega_{\rm pix}}, \qquad \Omega_{\rm pix} = \frac{\pi}{180\times60}\;[\rm sr/arcmin^2]$$
+  <div class="eq-label">σ_ε per source bin from sigma_epsilon_SN_bins; n_eff per bin from neff_arcmin2_SN_bins</div>
+</div>
+
+<h4>Galaxy shot noise (gg)</h4>
+<div class="eq-block">
+  $$N_\ell^{gg}(b,b') = \delta_{bb'}\,\frac{1}{\bar{n}_g(b)}$$
+  <div class="eq-label">n̄_g = comoving number density; solved from nbar_gal_comoving_val by matching HOD</div>
+</div>
+
+<h4>tSZ noise (yy)</h4>
+<p>The yy noise is loaded from an external file (<code>yy_noise_ell_fname</code>) or derived as the difference between a total map spectrum and the theory signal. It is <strong>not</strong> computed analytically from instrument noise.</p>
+
+<h4>Cross-spectrum noise</h4>
+<p>Cross-spectra (ky, gy, gk) have zero noise by default (assuming uncorrelated noise between different instruments/surveys).</p>
+
+<!-- ====================================================== -->
+<h2 id="params">Complete Parameter Reference</h2>
+
+<p>All parameters from <code>param_files/params_default.yaml</code>. Project-specific overrides are documented in <a href="#project-params">the next section</a>.</p>
+
+<h3 id="params-cosmo">Cosmological parameters — <code>sim_params.cosmo</code></h3>
+<table>
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>H0</td><td class="default">67.2</td><td>Hubble constant [km/s/Mpc]</td></tr>
+  <tr><td>Om0</td><td class="default">0.31</td><td>Total matter density today Ω<sub>m,0</sub></td></tr>
+  <tr><td>Ob0</td><td class="default">0.049</td><td>Baryon density today Ω<sub>b,0</sub></td></tr>
+  <tr><td>sigma8</td><td class="default">0.81</td><td>RMS matter fluctuation amplitude σ<sub>8</sub></td></tr>
+  <tr><td>ns</td><td class="default">0.95</td><td>Scalar spectral index n<sub>s</sub></td></tr>
+  <tr><td>w0</td><td class="default">-1.0</td><td>Dark energy equation of state w<sub>0</sub></td></tr>
+  <tr><td>flat</td><td class="default">True</td><td>Assume flat cosmology (Ω<sub>Λ</sub> = 1 − Ω<sub>m</sub>)</td></tr>
+</table>
+
+<h3 id="params-gas">Gas profile parameters (BCMP) — <code>sim_params</code></h3>
+<table>
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>nfw_trunc</td><td class="default">True</td><td>Apply smooth NFW truncation at r_t = ε_rt · r<sub>200c</sub></td></tr>
+  <tr><td>epsilon_rt</td><td class="default">4.0</td><td>NFW truncation radius in units of r<sub>200c</sub></td></tr>
+  <tr><td>theta_ej_0</td><td class="default">2.0</td><td>Amplitude of gas ejection radius θ_ej = r_ej / r_200c</td></tr>
+  <tr><td>log10_Mstar0_theta_ej</td><td class="default">16.0</td><td>Reference mass scale for θ_ej mass evolution [log10 M_sun/h]</td></tr>
+  <tr><td>nu_theta_ej_M</td><td class="default">0.0</td><td>Power-law slope of θ_ej mass evolution</td></tr>
+  <tr><td>nu_theta_ej_z</td><td class="default">0.0</td><td>Power-law slope of θ_ej redshift evolution</td></tr>
+  <tr><td>theta_co_0</td><td class="default">0.05</td><td>Amplitude of gas core radius θ_co = r_co / r_200c</td></tr>
+  <tr><td>log10_Mstar0_theta_co</td><td class="default">16.0</td><td>Reference mass scale for θ_co mass evolution [log10 M_sun/h]</td></tr>
+  <tr><td>nu_theta_co_M</td><td class="default">0.0</td><td>Power-law slope of θ_co mass evolution</td></tr>
+  <tr><td>nu_theta_co_z</td><td class="default">0.0</td><td>Power-law slope of θ_co redshift evolution</td></tr>
+  <tr><td>mu_beta</td><td class="default">0.6</td><td>Controls how fast β → 3 (saturates at large M/M_c)</td></tr>
+  <tr><td>log10_Mc0</td><td class="default">14.83</td><td>Pivot mass for β evolution [log10 M_sun/h]</td></tr>
+  <tr><td>log10_Mstar0</td><td class="default">14.0</td><td>Reference stellar mass for M_c(M,z) scaling [log10 M_sun/h]</td></tr>
+  <tr><td>nu_z</td><td class="default">0.0</td><td>Redshift evolution slope for M_c</td></tr>
+  <tr><td>nu_M</td><td class="default">0.0</td><td>Mass evolution slope for M_c</td></tr>
+  <tr><td>gamma_rhogas</td><td class="default">2.0</td><td>Inner transition steepness γ in gas profile (between core and ejection)</td></tr>
+  <tr><td>delta_rhogas</td><td class="default">7.0</td><td>Outer slope δ of gas profile beyond ejection radius</td></tr>
+  <tr><td>a_zeta</td><td class="default">0.3</td><td>Backreaction coupling strength a_ζ in contraction equation</td></tr>
+  <tr><td>n_zeta</td><td class="default">2.0</td><td>Backreaction power-law index n_ζ</td></tr>
+  <tr><td>alpha_nt</td><td class="default">0.18</td><td>Amplitude of non-thermal pressure fraction f_nt</td></tr>
+  <tr><td>beta_nt</td><td class="default">0.5</td><td>Radial slope of non-thermal pressure fraction</td></tr>
+  <tr><td>n_nt</td><td class="default">0.3</td><td>Redshift evolution slope of non-thermal pressure fraction</td></tr>
+</table>
+
+<h3 id="params-gal">Galaxy / HOD parameters — <code>sim_params</code></h3>
+<p>Used when <code>model_galaxies=True</code>. If <code>model_galaxies=False</code>, only <code>eta_star</code>, <code>eta_cga</code>, <code>A_starcga</code>, <code>log10_M1_starcga</code> are used.</p>
+<table>
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td colspan="3"><em>Stellar-halo mass relation (Leauthaud+2011 SHMR)</em></td></tr>
+  <tr><td>log10M1_fshmr</td><td class="default">12.35</td><td>log10 of pivot halo mass M<sub>1</sub> at a=1 [M_sun/h]</td></tr>
+  <tr><td>log10M1_a_fshmr</td><td class="default">0.28</td><td>Scale factor evolution of log10M<sub>1</sub>: M<sub>1</sub>(a) = M<sub>1</sub>(a=1) + slope×(a−1)</td></tr>
+  <tr><td>log10Mstar0_fshmr</td><td class="default">10.72</td><td>log10 of pivot stellar mass M<sub>*,0</sub> [M_sun/h]</td></tr>
+  <tr><td>log10Mstar0_a_fshmr</td><td class="default">0.55</td><td>Scale factor evolution of log10M<sub>*,0</sub></td></tr>
+  <tr><td>beta_fshmr</td><td class="default">0.44</td><td>Low-mass slope of SHMR</td></tr>
+  <tr><td>beta_a_fshmr</td><td class="default">0.18</td><td>Scale factor evolution of β</td></tr>
+  <tr><td>delta_fshmr</td><td class="default">0.57</td><td>High-mass transition parameter δ</td></tr>
+  <tr><td>delta_a_fshmr</td><td class="default">0.17</td><td>Scale factor evolution of δ</td></tr>
+  <tr><td>gamma_fshmr</td><td class="default">1.56</td><td>Transition sharpness γ in SHMR</td></tr>
+  <tr><td>gamma_a_fshmr</td><td class="default">2.51</td><td>Scale factor evolution of γ</td></tr>
+  <tr><td colspan="3"><em>Central occupation</em></td></tr>
+  <tr><td>siglogMstar_Ncen</td><td class="default">0.25</td><td>Log-scatter in M<sub>*</sub> for central occupation (σ in erf)</td></tr>
+  <tr><td colspan="3"><em>Satellite occupation</em></td></tr>
+  <tr><td>alphasat_Nsat</td><td class="default">1.0</td><td>Power-law slope α of satellite occupation N_sat ∝ (M/M_sat)^α</td></tr>
+  <tr><td>Bcut_Nsat</td><td class="default">1.69</td><td>Amplitude of cut mass M_cut = B_cut×(M_h/10<sup>12</sup>)^β_cut</td></tr>
+  <tr><td>Bsat_Nsat</td><td class="default">9.01</td><td>Amplitude of satellite mass M_sat = B_sat×(M_h/10<sup>12</sup>)^β_sat</td></tr>
+  <tr><td>betacut_Nsat</td><td class="default">0.6</td><td>Slope β_cut of M_cut mass scaling</td></tr>
+  <tr><td>betasat_Nsat</td><td class="default">0.74</td><td>Slope β_sat of M_sat mass scaling</td></tr>
+  <tr><td colspan="3"><em>Simple stellar fraction (when model_galaxies=False)</em></td></tr>
+  <tr><td>eta_star</td><td class="default">0.3</td><td>Satellite stellar fraction (simple power law)</td></tr>
+  <tr><td>eta_cga</td><td class="default">0.6</td><td>Central galaxy amplitude</td></tr>
+  <tr><td>A_starcga</td><td class="default">0.09</td><td>Normalization of simple stellar profile</td></tr>
+  <tr><td>log10_M1_starcga</td><td class="default">11.4</td><td>Reference mass of simple stellar profile [log10 M_sun/h]</td></tr>
+</table>
+
+<h3 id="params-halo">Halo grid parameters — <code>halo_params</code></h3>
+<table>
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>rmin / rmax</td><td class="default">0.005 / 8.0</td><td>Radial profile range [Mpc/h]</td></tr>
+  <tr><td>nr</td><td class="default">23</td><td>Number of radial bins (log-spaced). Determines FFTLog accuracy. Pge analysis uses 64.</td></tr>
+  <tr><td>zmin / zmax</td><td class="default">0.01 / 1.6</td><td>Redshift integration range</td></tr>
+  <tr><td>nz</td><td class="default">22</td><td>Number of redshift bins (profile grid, coarser than Limber grid)</td></tr>
+  <tr><td>lg10_Mmin / lg10_Mmax</td><td class="default">11.5 / 15.5</td><td>Log10 mass range for halo integration [M_sun/h]</td></tr>
+  <tr><td>nM</td><td class="default">24</td><td>Number of mass bins (log-spaced)</td></tr>
+  <tr><td>kmin / kmax</td><td class="default">0.0001 / 150.0</td><td>Wavenumber range [h/Mpc]</td></tr>
+  <tr><td>nk</td><td class="default">48</td><td>Number of k bins (log-spaced)</td></tr>
+  <tr><td>ellmin / ellmax</td><td class="default">11.29 / 8971.6</td><td>Angular multipole range for C(ℓ) computation</td></tr>
+  <tr><td>nell</td><td class="default">30</td><td>Number of ℓ bins (log-spaced)</td></tr>
+  <tr><td>mdef_Delta</td><td class="default">200</td><td>Halo mass definition Δ (overdensity w.r.t. critical)</td></tr>
+  <tr><td>conc_model</td><td class="default">Duffy08</td><td>Concentration model: <code>Duffy08</code>, <code>Prada12</code>, <code>Diemer15</code></td></tr>
+  <tr><td>hmf_model</td><td class="default">T10</td><td>HMF model: <code>T08</code> (Tinker 2008) or <code>T10</code> (Tinker 2010)</td></tr>
+  <tr><td>do_corr_2h_mm</td><td class="default">True</td><td>Apply large-scale matter bias correction for missing mass below M_min</td></tr>
+</table>
+
+<h3 id="params-analysis">Analysis parameters — <code>analysis</code></h3>
+<table>
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>backreaction</td><td class="default">True</td><td>Apply gas backreaction on dark matter (adiabatic contraction)</td></tr>
+  <tr><td>model_galaxies</td><td class="default">True</td><td>Include full HOD galaxy model (else simple stellar fractions)</td></tr>
+  <tr><td>model_tSZ</td><td class="default">True</td><td>Compute tSZ (Compton-y) power spectra and maps</td></tr>
+  <tr><td>model_matter</td><td class="default">'DMB'</td><td><code>'DMB'</code>: baryonified halo model × suppression; <code>'halofit'</code>: pure halofit</td></tr>
+  <tr><td>tSZ_transition_model</td><td class="default">'poweradd'</td><td><code>'poweradd'</code>: (P_1H^α+P_2H^α)^{1/α} with no suppression; <code>'response'</code>: additionally × S(k,z)</td></tr>
+  <tr><td>analysis_coords</td><td class="default">'fourier'</td><td><code>'fourier'</code>: C(ℓ) data vector; <code>'real'</code>: ξ(θ) with two-Bessel covariance</td></tr>
+  <tr><td>num_points_trapz_int</td><td class="default">32</td><td>Number of integration points for trapezoidal rule in mass integrals</td></tr>
+  <tr><td>num_points_gal_cal</td><td class="default">32</td><td>Number of points for galaxy number density calibration integrals</td></tr>
+  <tr><td>calc_nfw_only</td><td class="default">True</td><td>Also compute NFW-only (halofit) spectra for comparison</td></tr>
+  <tr><td>beam_fwhm_arcmin</td><td class="default">1.6</td><td>Gaussian beam FWHM for tSZ observations [arcmin]</td></tr>
+  <tr><td>verbose_time</td><td class="default">False</td><td>Print timing info for each major computation step</td></tr>
+  <tr><td>symbolic_pk</td><td class="default">False</td><td>Use symbolic regression for halofit (faster, but approximate)</td></tr>
+  <tr><td>symbolic_hmf</td><td class="default">False</td><td>Use symbolic regression for σ(M,z) and HMF (faster)</td></tr>
+  <tr><td>nbar_gal_comoving_val</td><td class="default">5e-4</td><td>Target galaxy comoving number density n̄_g [h³/Mpc³] for HOD threshold calibration</td></tr>
+  <tr><td>zmin_for_Cls / zmax_for_Cls</td><td class="default">0.01 / 1.6</td><td>Redshift integration range for Limber projection</td></tr>
+  <tr><td>nz_for_Cls</td><td class="default">128</td><td>Number of z points for Limber integration (finer than profile grid)</td></tr>
+  <tr><td>fsky_yy</td><td class="default">0.4</td><td>Sky fraction for yy covariance</td></tr>
+  <tr><td>fsky_ky</td><td class="default">0.437</td><td>Sky fraction for κy covariance</td></tr>
+  <tr><td>fsky_kk</td><td class="default">0.437</td><td>Sky fraction for κκ covariance</td></tr>
+  <tr><td>fsky_yg</td><td class="default">0.34</td><td>Sky fraction for yg (galaxy×tSZ) covariance</td></tr>
+  <tr><td>fsky_kg</td><td class="default">0.1</td><td>Sky fraction for κg covariance</td></tr>
+  <tr><td>fsky_gg</td><td class="default">0.34</td><td>Sky fraction for gg covariance</td></tr>
+  <tr><td>stats_for_cov</td><td class="default">['ky','kk','gy','gg','gk']</td><td>Which probe pairs to include in covariance matrix</td></tr>
+  <tr><td>sigma_epsilon_SN_bins</td><td class="default">0.26 × nbins</td><td>Per-bin shape noise amplitude σ_ε (per component)</td></tr>
+  <tr><td>neff_arcmin2_SN_bins</td><td class="default">4.64 × nbins</td><td>Per-bin effective source galaxy number density [arcmin⁻²]</td></tr>
+  <tr><td>angles_data_array</td><td class="default">[2.5, 250, 20]</td><td>[θ_min, θ_max, Nθ] for real-space angular data vector [arcmin]</td></tr>
+</table>
+
+<h3 id="params-other">Other / systematics parameters — <code>other_params</code></h3>
+<table>
+  <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
+  <tr><td>A_IA</td><td class="default">0.1</td><td>Intrinsic alignment amplitude (NLA model)</td></tr>
+  <tr><td>eta_IA</td><td class="default">0.1</td><td>Redshift slope of IA: $(1+z)^{\eta_{\rm IA}}$</td></tr>
+  <tr><td>z0_IA</td><td class="default">0.62</td><td>IA pivot redshift z<sub>0</sub></td></tr>
+  <tr><td>C1_rhocrit</td><td class="default">0.0134</td><td>IA normalization constant C<sub>1</sub>ρ<sub>crit</sub> [h² M_sun/Mpc³]</td></tr>
+  <tr><td>alpha_ky</td><td class="default">1.0</td><td>poweradd transition parameter α for κy spectrum. At α=1: linear P₁H+P₂H. At α→0: max(P₁H,P₂H).</td></tr>
+  <tr><td>alpha_gy</td><td class="default">1.0</td><td>poweradd transition parameter α for gy spectrum</td></tr>
+  <tr><td>Delta_z_bias_array</td><td class="default">0.0 × 5 bins</td><td>Photo-z bias offsets Δz per source redshift bin</td></tr>
+  <tr><td>mult_shear_bias_array</td><td class="default">0.0 × 5 bins</td><td>Multiplicative shear calibration bias m per source bin</td></tr>
+</table>
+
+<!-- ====================================================== -->
+<h2 id="project-params">Project-specific Parameter Files</h2>
+
+<h3>DESxACT (<code>param_files/DESxACT/params_v3.yaml</code>)</h3>
+<p>ACT × DES tSZ-lensing cross-correlation analysis. Overrides from default:</p>
+<table>
+  <tr><th>Parameter</th><th>Value</th><th>Note</th></tr>
+  <tr><td>Om0</td><td class="default">0.27</td><td>Lower than Planck (DES best-fit)</td></tr>
+  <tr><td>sigma8</td><td class="default">0.76</td><td>Lower S<sub>8</sub> tension value</td></tr>
+  <tr><td>log10_Mc0</td><td class="default">13.75</td><td>Tighter mass scale (more gas retained)</td></tr>
+  <tr><td>mu_beta</td><td class="default">0.75</td><td>Steeper β evolution with mass</td></tr>
+  <tr><td>model_galaxies</td><td class="default">False</td><td>No galaxy model; tSZ × lensing only</td></tr>
+  <tr><td>analysis_coords</td><td class="default">'real'</td><td>Real-space ξ data vector (γ_ty(θ))</td></tr>
+  <tr><td>fsky_yy/ky/kk</td><td class="default">0.1</td><td>Smaller overlap footprint</td></tr>
+</table>
+
+<h3>Pge — Galaxy × Electron (<code>param_files/Pge/params.yaml</code>)</h3>
+<p>Galaxy–kSZ / electron cross-correlation analysis. Overrides from default:</p>
+<table>
+  <tr><th>Parameter</th><th>Value</th><th>Note</th></tr>
+  <tr><td>Om0 / sigma8 / ns</td><td class="default">0.3 / 0.8 / 0.96</td><td>Slightly different cosmology</td></tr>
+  <tr><td>Ob0</td><td class="default">0.048</td><td>Slightly lower baryon fraction</td></tr>
+  <tr><td>nu_theta_ej_M</td><td class="default">−0.33</td><td><strong>Negative!</strong> Ejection radius decreases with mass (less gas ejected from high-M halos)</td></tr>
+  <tr><td>nu_theta_ej_z</td><td class="default">−1.22</td><td><strong>Negative!</strong> Ejection radius decreases toward higher z</td></tr>
+  <tr><td>mu_beta</td><td class="default">0.0762</td><td>Very weak β mass evolution</td></tr>
+  <tr><td>alpha_nt</td><td class="default">0.05</td><td>Reduced non-thermal pressure (more thermalized)</td></tr>
+  <tr><td>conc_model</td><td class="default">Diemer15</td><td>More physical concentration model</td></tr>
+  <tr><td>nr / rmax</td><td class="default">64 / 16.0</td><td>Finer radial grid for electron profile accuracy</td></tr>
+  <tr><td>num_points_trapz_int</td><td class="default">64</td><td>Higher accuracy mass integration</td></tr>
+  <tr><td>A_IA / eta_IA</td><td class="default">−0.5 / 0.5</td><td>Different IA signal (negative A_IA = blue galaxies)</td></tr>
+  <tr><td>beam_fwhm_arcmin</td><td class="default">1.4</td><td>Slightly tighter beam</td></tr>
+  <tr><td>HOD params (TEST2)</td><td class="default">see file</td><td>siglogMstar_Ncen=0.7, alphasat=1.19, betasat=0.3 — calibrated to BOSS/DESI LRGs</td></tr>
+</table>
+
+<!-- ====================================================== -->
+<h2 id="hardcoded">Hardcoded Constants &amp; Fixed Settings</h2>
+
+<div class="warn">
+  <strong>Debugging tip:</strong> When results look wrong, check these values first — they cannot be changed via parameter files.
+</div>
+
+<table>
+  <tr><th>Constant</th><th>Value</th><th>Location</th><th>Physical meaning</th></tr>
+  <tr><td>δ<sub>c</sub></td><td class="default">1.68647</td><td>constants.py, get_radial_profiles.py</td><td>Spherical collapse threshold</td></tr>
+  <tr><td>RHO_CRIT_0_MPC3</td><td class="default">2.77536627245708×10¹¹</td><td>base_class.py, get_covs.py</td><td>Critical density today [M_sun h²/Mpc³]</td></tr>
+  <tr><td>mue</td><td class="default">1.14</td><td>base_class.py</td><td>Mean molecular weight per electron (μ_e)</td></tr>
+  <tr><td>P_e/P_th</td><td class="default">1/1.932</td><td>get_radial_profiles.py</td><td>Electron-to-thermal pressure ratio (fully ionized plasma)</td></tr>
+  <tr><td>σ_T conversion</td><td class="default">≈5.03×10⁻¹⁰</td><td>get_radial_profiles.py</td><td>Coefficient for y_3d = σ_T/(m_e c²) × P_e × Mpc_to_cm / h</td></tr>
+  <tr><td>R_h / r_200c</td><td class="default">0.015</td><td>get_radial_profiles.py</td><td>Central galaxy half-light radius ratio (Gaussian profile)</td></tr>
+  <tr><td>Duffy08: A,B,C</td><td class="default">5.71, −0.084, −0.47</td><td>get_radial_profiles.py</td><td>NFW concentration fitting parameters (Duffy+08 Table 1)</td></tr>
+  <tr><td>FFTLog lowring</td><td class="default">True</td><td>get_Pkzs.py</td><td>Low-ringing condition for FFTLog transform</td></tr>
+  <tr><td>Hankel q</td><td class="default">1.0</td><td>get_Xis.py</td><td>Bias parameter for Hankel transform</td></tr>
+  <tr><td>σ(M) integration N</td><td class="default">64</td><td>get_radial_profiles.py</td><td>Number of points in logspace trapezoidal rule for σ(M)</td></tr>
+  <tr><td>WL kernel Simpson N</td><td class="default">128</td><td>get_Cls.py</td><td>Number of Gauss points for W_κ z-integration</td></tr>
+  <tr><td>C<sub>1</sub></td><td class="default">5.0×10⁻¹⁴</td><td>constants.py</td><td>IA normalization constant (SI units)</td></tr>
+  <tr><td>z<sub>0,IA</sub></td><td class="default">0.62</td><td>params_default.yaml</td><td>IA pivot redshift (DES convention)</td></tr>
+  <tr><td>T<sub>CMB</sub></td><td class="default">2.726 K</td><td>constants.py</td><td>CMB temperature today</td></tr>
+  <tr><td>Mpc_to_cm</td><td class="default">3.086×10²⁴</td><td>base_class.py</td><td>Unit conversion [cm/Mpc]</td></tr>
+  <tr><td>M_solar</td><td class="default">1.9884754×10³³ g</td><td>constants.py (IAU 2015)</td><td>Solar mass [g]</td></tr>
+</table>
+
+<!-- ====================================================== -->
+<h2 id="flags">Runtime Flags &amp; Conditional Logic</h2>
+
+<p>These flags change what is computed and what code paths are taken. They all live in <code>analysis_dict</code> or <code>sim_params_dict</code>.</p>
+
+<table>
+  <tr><th>Flag</th><th>Dict</th><th>Effect when True / changed</th></tr>
+  <tr><td><code>model_tSZ</code></td><td>analysis</td><td>Computes y3d, P_ym, P_yy, P_gy, Cl_ky, Cl_yy, Cl_gy; beam applied; u_y built for trispectrum</td></tr>
+  <tr><td><code>model_galaxies</code></td><td>analysis</td><td>Computes HOD, u_g, P_gm, P_gg, P_ge, P_gy; Cl_gg, Cl_gk, Cl_gy; shot noise added</td></tr>
+  <tr><td><code>backreaction</code></td><td>analysis</td><td>Solves ζ equation; CLM profile uses compressed NFW. If False: ζ=1 (no contraction)</td></tr>
+  <tr><td><code>model_matter</code></td><td>analysis</td><td><code>'DMB'</code>: P_mm = P_dmb × S; <code>'halofit'</code>: P_mm = P_halofit directly</td></tr>
+  <tr><td><code>tSZ_transition_model</code></td><td>analysis</td><td><code>'poweradd'</code>: (P1h^α+P2h^α)^{1/α} no suppression; <code>'response'</code>: also × S(k,z)</td></tr>
+  <tr><td><code>analysis_coords</code></td><td>analysis</td><td><code>'fourier'</code>: C(ℓ) data vector; <code>'real'</code>: ξ(θ) via two-Bessel transform</td></tr>
+  <tr><td><code>hmf_model</code></td><td>halo_params</td><td><code>'T10'</code>: Tinker 2010 (z-evolution); <code>'T08'</code>: Tinker 2008 (no z-evolution)</td></tr>
+  <tr><td><code>conc_model</code></td><td>halo_params</td><td><code>'Duffy08'</code>, <code>'Prada12'</code>, <code>'Diemer15'</code> — changes c(M,z) and thus profile shapes</td></tr>
+  <tr><td><code>nfw_trunc</code></td><td>sim_params</td><td>Applies (1+(r/r_t)²)^{-2} cutoff. Without it, NFW profiles diverge at large r in Fourier space.</td></tr>
+  <tr><td><code>do_corr_2h_mm</code></td><td>halo_params</td><td>Adds large-scale bias correction (1−b_LS) to ensure matter bias → 1 as k→0</td></tr>
+  <tr><td><code>symbolic_pk</code></td><td>analysis</td><td>Replaces jax_cosmo halofit with symbolic regression (fast but approximate)</td></tr>
+  <tr><td><code>symbolic_hmf</code></td><td>analysis</td><td>Replaces σ(M) and dlnσ/dlnM with symbolic regression</td></tr>
+  <tr><td><code>verbose_time</code></td><td>analysis</td><td>Prints timing for each major block in get_Cl</td></tr>
+  <tr><td><code>calc_nfw_only</code></td><td>analysis</td><td>Also populates cached_power_spectra[1,1] (NFW/halofit lensing) for code comparison</td></tr>
+</table>
+
+<!-- ====================================================== -->
+<h2 id="caveats">Known Approximations &amp; Caveats</h2>
+
+<div class="flag">
+  <strong>Limber approximation</strong>
+  All C(ℓ) are computed under the Limber approximation $k \approx (\ell+\tfrac{1}{2})/\chi(z)$. This is accurate to ~1% for ℓ &gt; 10 but breaks down at very low ℓ for wide-kernel probes.
+</div>
+
+<div class="flag">
+  <strong>1-halo / 2-halo transition (poweradd)</strong>
+  The poweradd model $(P_{1H}^\alpha + P_{2H}^\alpha)^{1/\alpha}$ is a phenomenological prescription. At $\alpha=1$ it is the standard linear sum. The transition scale where 1-halo and 2-halo terms are equal is not treated with a physical model (unlike HMcode, which has an explicit transition term). For tSZ-containing spectra, the default is poweradd without baryonic suppression.
+</div>
+
+<div class="flag">
+  <strong>Baryonic suppression applied to tSZ only via 'response' model</strong>
+  In the default <code>poweradd</code> mode, P_ym and P_yy do not receive the suppression factor S(k,z). This is because the gas profile itself captures the baryon redistribution. Applying S on top would double-count baryonic effects. If debugging tSZ predictions at large k, check which transition model is active.
+</div>
+
+<div class="flag">
+  <strong>P_yy receives beam² while P_ky receives beam¹</strong>
+  The yy auto-power bakes in $B_\ell^2$ inside <code>get_Pkyy_lz</code>. The ky cross-spectrum applies $B_\ell^1$ to <code>Pkym_lz_mat</code> (one factor for the y field). This asymmetry is correct physically but easy to miss when comparing spectra.
+</div>
+
+<div class="flag">
+  <strong>tSZ noise is not computed from first principles</strong>
+  The noise on C_yy must be supplied externally (via <code>yy_total_ell_fname</code> or <code>yy_noise_ell_fname</code>). Without these files, the code proceeds with zero yy noise and prints a warning. This affects the Gaussian covariance diagonal for all probe pairs involving y.
+</div>
+
+<div class="flag">
+  <strong>Electron pressure to thermal pressure ratio is hardcoded</strong>
+  The factor $P_e = P_{\rm th}/1.932$ assumes fully ionized gas with a fixed helium mass fraction. This is not a free parameter and cannot be changed via the YAML files.
+</div>
+
+<div class="flag">
+  <strong>Galaxy number density threshold is solved per-redshift at init time</strong>
+  The HOD threshold mass M<sub>*,thresh</sub>(z) is computed during <code>Profiles.__init__</code> via binary search. If the target <code>nbar_gal_comoving_val</code> cannot be matched at some redshift (e.g., because M_min is too high), the code may return edge values silently.
+</div>
+
+<div class="flag">
+  <strong>Large-scale 2-halo matter bias correction</strong>
+  When <code>do_corr_2h_mm=True</code>, the code enforces $\int (M/\rho_m)\,(dN/dlnM)\,b\,dlnM = 1$ by adding a k-independent correction. This is applied to the dmb and NFW (and electron) fields, but <strong>not</strong> to the tSZ field. The tSZ bias b_y is not corrected.
+</div>
+
+<div class="flag">
+  <strong>Backreaction iterative solver resolution</strong>
+  The backreaction equation is solved on the same (nr, nz, nM) grid as the profiles. The compression factor ζ(r) is found by linear interpolation of the residual function. At very high or very low M/z, the iteration may not converge smoothly — check <code>rho_clm_mat</code> for NaN or negative values.
+</div>
+
+<div class="flag">
+  <strong>Non-Gaussian covariance uses NumPy/SciPy throughout</strong>
+  The trispectrum calculation uses <code>scipy.integrate.simpson</code> and NumPy arrays. JAX arrays from the upstream calculations are converted at the boundary. This means the covariance is not differentiable.
+</div>
+
+<div class="flag">
+  <strong>Probe index symmetry in cached_power_spectra</strong>
+  The 4×4 array is symmetric: <code>[i,j]</code> is set equal to <code>[j,i]</code> immediately after computation. However, the y-beam factor is already baked into the [0,3] and [3,3] entries, so they should not be accessed without awareness that B_ℓ is included.
+</div>
+
+<div class="flag">
+  <strong>Photo-z bias shifts n(z) but does not renormalize in k-space</strong>
+  <code>get_photoz_biased_nz</code> shifts the source n(z) by Δz and renormalizes the integral. It does not apply a multiplicative shear bias (<code>mult_shear_bias_array</code> is read but not currently applied in the main pipeline — verify in get_Cl if using).
+</div>
+
+<hr>
+<p style="color: var(--text-muted); font-size: 0.8rem; text-align: center; margin-top: 20px;">
+  Generated from source inspection of <code>src/godmax/</code> · <code>param_files/</code> · branch <code>dev-diagnostics</code>
+</p>
+
+</main>
+</div>
+</body>
+</html>

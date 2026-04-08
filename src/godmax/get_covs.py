@@ -100,20 +100,59 @@ class get_cov(get_Cl):
         self.Cl_result_dict = {}
         self.Cl_result_dict['l_array_survey'] = l_array_survey
         self.Cl_result_dict['dl_array_survey'] = dl_array_survey
-        # yy: get_Cls already loaded the file and set:
-        #   self.Cl_y_y_signal_mat  = theory-only Cl_yy  (on ell_array)
-        #   self.Cl_y_y_tot_mat     = theory + noise Cl_yy (on ell_array)
-        # Interpolate both onto l_array_survey; no file reading needed here.
-        def _interp_cl_to_survey(Cl_ell):
-            return jnp.exp(jnp.interp(
-                jnp.log(l_array_survey),
-                jnp.log(self.ell_array),
-                jnp.log(jnp.maximum(Cl_ell, 1e-100))
-            ))
 
-        Cl_yy_signal_survey   = _interp_cl_to_survey(self.Cl_y_y_signal_mat)
-        Cl_yy_noise_survey    = _interp_cl_to_survey(jnp.maximum(self.Cl_y_y_noise_mat, 1e-100))
-        Cl_yy_totnoise_survey = _interp_cl_to_survey(self.Cl_y_y_tot_mat)
+        # ------------------------------------------------------------------
+        # Previous implementation (replaced — see note below):
+        #
+        #   # yy: get_Cls already loaded the file and set:
+        #   #   self.Cl_y_y_signal_mat  = theory-only Cl_yy  (on ell_array)
+        #   #   self.Cl_y_y_tot_mat     = theory + noise Cl_yy (on ell_array)
+        #   # Interpolate both onto l_array_survey; no file reading needed here.
+        #   def _interp_cl_to_survey(Cl_ell):
+        #       return jnp.exp(jnp.interp(
+        #           jnp.log(l_array_survey),
+        #           jnp.log(self.ell_array),
+        #           jnp.log(jnp.maximum(Cl_ell, 1e-100))
+        #       ))
+        #
+        #   Cl_yy_signal_survey   = _interp_cl_to_survey(self.Cl_y_y_signal_mat)
+        #   Cl_yy_noise_survey    = _interp_cl_to_survey(jnp.maximum(self.Cl_y_y_noise_mat, 1e-100))
+        #   Cl_yy_totnoise_survey = _interp_cl_to_survey(self.Cl_y_y_tot_mat)
+        #
+        # Bug: yy was the only probe subjected to a log-log interpolation
+        # round-trip.  All other probes (ky, kk, gy, gk, gg) are stored
+        # directly from their Cl_*_mat attributes, which are already on
+        # ell_array.  When l_array_survey == ell_array (the standard setup),
+        # the round-trip introduced a small downward bias in Cl_yy from
+        # log-space numerics.  At high ell, where beam suppression makes yy
+        # drop steeply (B² vs B¹ for ky/gy), this bias violated the
+        # Cauchy-Schwarz condition C̃_kk · C̃_yy ≥ Cl_ky² needed for the
+        # Gaussian field-level matrix to be PSD.  Observed symptom: Schur
+        # complement along the y direction ≈ −5.66e-19 at ell ≈ 2908, with
+        # eigenvector almost purely along y.
+        # ------------------------------------------------------------------
+        # Fix: assert both grids are identical, then store yy directly — the
+        # same way ky/kk/gy/gk/gg are stored below — so the whole field
+        # matrix is assembled from values on exactly the same ell grid with
+        # no probe-specific interpolation step.
+        _grids_match = (
+            len(l_array_survey) == len(self.ell_array)
+            and bool(jnp.allclose(jnp.asarray(l_array_survey), self.ell_array))
+        )
+        if not _grids_match:
+            raise ValueError(
+                "l_array_survey differs from ell_array. All Cl_*_mat "
+                "attributes (ky, kk, gy, gk, gg, yy) are computed on "
+                "ell_array; l_array_survey must be the same grid for "
+                "consistent covariance assembly. Set "
+                "halo_params_dict['ell_array'] = analysis_dict['l_array_survey']."
+            )
+
+        Cl_yy_signal_survey   = self.Cl_y_y_signal_mat
+        Cl_yy_totnoise_survey = self.Cl_y_y_tot_mat
+        # Noise derived as the difference of the two already-consistent arrays;
+        # avoids independent log-space floors that made signal + noise ≠ total.
+        Cl_yy_noise_survey    = jnp.maximum(self.Cl_y_y_tot_mat - self.Cl_y_y_signal_mat, 0.0)
 
         self.Cl_result_dict['yy'] = {}
         self.Cl_result_dict['yy']['bin_0_0'] = {
@@ -701,6 +740,10 @@ class get_cov(get_Cl):
         ul_B_mat = np.abs(uBl_zM_dict)
         ul_C_mat = np.abs(uCl_zM_dict)
         ul_D_mat = np.abs(uDl_zM_dict)
+        # ul_A_mat = uAl_zM_dict
+        # ul_B_mat = uBl_zM_dict
+        # ul_C_mat = uCl_zM_dict
+        # ul_D_mat = uDl_zM_dict
 
         uAl1_uBl1 = ul_A_mat * ul_B_mat
         uCl2_uDl2 = ul_C_mat * ul_D_mat
