@@ -101,7 +101,7 @@ halo_params:
 
   zmin: 0.01
   zmax: 1.6
-  nz: 22
+  nz: 10
 
   lg10_Mmin: 11.5
   lg10_Mmax: 15.5
@@ -113,7 +113,7 @@ halo_params:
 
   ellmin: 11.29462706
   ellmax: 8971.6413594
-  nell: 30
+  nell: 200
 
   mdef_Delta: 200
   conc_model: Duffy08

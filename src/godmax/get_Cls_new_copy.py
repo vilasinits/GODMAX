@@ -5,6 +5,7 @@ from jax import jit, vmap
 import jax.scipy.integrate as jsi
 from functools import partial
 from astropy import constants as const
+import astropy.units as u
 import interpax
 from jax_cosmo.scipy.integrate import simps
 import time
@@ -64,7 +65,7 @@ class get_Cl(get_Pkz):
             self.Pkgg_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgg_tot_mat).T
 
         # Get the interpolators:
-        self.cached_power_spectra = jnp.zeros((4, 4, self.nell, self.nz_for_Cls))
+        self.cached_power_spectra = jnp.zeros((5, 5, self.nell, self.nz_for_Cls))
         log_ell = jnp.log(self.ell_array)
         self.logPkmmlz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkmm_lz_mat), extrap=True)        
         self.cached_power_spectra = self.cached_power_spectra.at[0,0].set(vmap(lambda l: jnp.exp(self.logPkmmlz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
@@ -93,14 +94,28 @@ class get_Cl(get_Pkz):
             self.logPkgm_nfw_lz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkgm_nfw_lz_mat), extrap=True)        
             self.cached_power_spectra = self.cached_power_spectra.at[2,1].set(vmap(lambda l: jnp.exp(self.logPkgm_nfw_lz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
             self.cached_power_spectra = self.cached_power_spectra.at[1,2].set(self.cached_power_spectra[2,1])
-        else: self.logPkgmlz_2d_interp, self.logPkgglz_2d_interp, self.logPkgylz_2d_interp, self.logPkgm_nfw_lz_2d_interp = EmptyCallable(), EmptyCallable(), EmptyCallable(), EmptyCallable()
+            self.logPkge_lz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkge_lz_mat), extrap=True)
+            self.cached_power_spectra = self.cached_power_spectra.at[2,4].set(vmap(lambda l: jnp.exp(self.logPkge_lz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
+            self.cached_power_spectra = self.cached_power_spectra.at[4,2].set(self.cached_power_spectra[2,4])
+        else: self.logPkgmlz_2d_interp, self.logPkgglz_2d_interp, self.logPkgylz_2d_interp, self.logPkgm_nfw_lz_2d_interp, self.logPkge_lz_2d_interp = EmptyCallable(), EmptyCallable(), EmptyCallable(), EmptyCallable(), EmptyCallable()
 
         # Get the window functions for different probes:
-        self.pzs_inp_mat = vmap(self.get_photoz_biased_nz)(jnp.arange(self.nbins))
-        self.Wk_gravonly_mat = get_vmapped_func(self.get_weak_lensing_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
-        self.nla_mat = get_vmapped_func(self.get_nla_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T        
-        self.Wk_mat = self.Wk_gravonly_mat + self.nla_mat
+        if not hasattr(self, 'is_cmb_lensing'):
+            self.is_cmb_lensing = analysis_dict.get('is_cmb_lensing', False)
+        if self.is_cmb_lensing:
+            if not hasattr(self, 'chi_CMB'):
+                from jax_cosmo.background import radial_comoving_distance
+                self.chi_CMB = float(radial_comoving_distance(self.cosmo_jax, jnp.array([1.0 / (1.0 + 1100.0)]))[0])
+            self.Wk_mat = get_vmapped_func(self.get_cmb_lensing_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
+        else:
+            self.pzs_inp_mat = vmap(self.get_photoz_biased_nz)(jnp.arange(self.nbins))
+            self.Wk_gravonly_mat = get_vmapped_func(self.get_weak_lensing_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
+            self.nla_mat = get_vmapped_func(self.get_nla_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
+            self.Wk_mat = self.Wk_gravonly_mat + self.nla_mat
         self.Wy_array = (1.0 / (1.0 + self.z_array_for_Cls))
+        oneMpc = (((10 ** 6)) * (u.pc).to(u.m)) * (u.m)
+        self.const_coeff_tau = (((const.sigma_T * oneMpc).to(u.cm ** 3)).value) / (self.cosmo_params['H0'] / 100.)
+        self.Wtau_array = self.const_coeff_tau * (1.0 / (1.0 + self.z_array_for_Cls))
         if self.model_galaxies:
             self.Wg_mat = vmap(self.get_nz_lens_interp)(jnp.arange(self.nbins_lens))
         else: self.Wg_mat = jnp.zeros((1,1))
@@ -151,6 +166,7 @@ class get_Cl(get_Pkz):
             if self.model_galaxies:
                 # self.Cl_gal_y_tot_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nbins_lens), 0, 2, 3).T
                 self.Cl_gal_y_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), 0, 2, 3).T
+                self.Cl_gal_tau_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), 0, 2, 4).T
                 if self.ENABLE_TIMING:
                     print("Time to compute the gal y: ", time.time() - ti)
 
@@ -239,6 +255,18 @@ class get_Cl(get_Pkz):
 
 
     @partial(jit, static_argnums=(0,))
+    def get_cmb_lensing_kernel(self, jb, jz):
+        """
+        Returns the CMB lensing kernel (single source plane at chi_CMB).
+        Used when is_cmb_lensing=True in analysis_dict.
+        """
+        z = self.z_array_for_Cls[jz]
+        chi = self.chi_array_for_Cls[jz]
+        radial_kernel_cmb = jnp.clip(self.chi_CMB - chi, 0) / jnp.clip(self.chi_CMB, 0.1)
+        constant_factor_cmb = 3.0 * (100.)**2 * self.cosmo_jax.Omega_m / (2.0 * ((const.c.value * 1e-3)**2))
+        return constant_factor_cmb * radial_kernel_cmb * (1.0 + z) * chi
+
+    @partial(jit, static_argnums=(0,))
     def get_weak_lensing_kernel(self, jb, jz):
         """
         Returns a weak lensing kernel
@@ -304,6 +332,7 @@ class get_Cl(get_Pkz):
                 (probe == 1, (1. + self.mult_shear_bias_array[jb]) * (self.Wk_mat[jb] / (self.chi_array_for_Cls**2))),
                 (probe == 2, self.Wg_mat[jb] / (self.dchi_dz_array_for_Cls * self.chi_array_for_Cls**2)),
                 (probe == 3, self.Wy_array / (self.chi_array_for_Cls**2)),
+                (probe == 4, self.Wtau_array / (self.chi_array_for_Cls**2)),
             ]
             
             # Default value if no condition matches

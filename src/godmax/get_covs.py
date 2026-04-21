@@ -736,19 +736,23 @@ class get_cov(get_Cl):
         ):
         nl = len(l_array_all)
 
-        ul_A_mat = np.abs(uAl_zM_dict)
-        ul_B_mat = np.abs(uBl_zM_dict)
-        ul_C_mat = np.abs(uCl_zM_dict)
-        ul_D_mat = np.abs(uDl_zM_dict)
-        # ul_A_mat = uAl_zM_dict
-        # ul_B_mat = uBl_zM_dict
-        # ul_C_mat = uCl_zM_dict
-        # ul_D_mat = uDl_zM_dict
+        # ul_A_mat = np.abs(uAl_zM_dict)
+        # ul_B_mat = np.abs(uBl_zM_dict)
+        # ul_C_mat = np.abs(uCl_zM_dict)
+        # ul_D_mat = np.abs(uDl_zM_dict)
+        ul_A_mat = uAl_zM_dict
+        ul_B_mat = uBl_zM_dict
+        ul_C_mat = uCl_zM_dict
+        ul_D_mat = uDl_zM_dict
 
         uAl1_uBl1 = ul_A_mat * ul_B_mat
         uCl2_uDl2 = ul_C_mat * ul_D_mat
+        # BUG: axes swapped — AB kernels were on ℓ₂ axis, CD on ℓ₁, giving T^{CD,AB} not T^{AB,CD}
         uAl1_uBl1_mat = np.tile(uAl1_uBl1.reshape(1, nl, self.nz_for_Cls, self.nM), (nl, 1, 1, 1))
         uCl2_uDl2_mat = np.tile(uCl2_uDl2.reshape(nl, 1, self.nz_for_Cls, self.nM), (1, nl, 1, 1))
+        # # FIX: AB kernels on axis 0 (ℓ₁), CD kernels on axis 1 (ℓ₂) → correct T^{AB,CD}(ℓ₁,ℓ₂)
+        # uAl1_uBl1_mat = np.tile(uAl1_uBl1.reshape(nl, 1, self.nz_for_Cls, self.nM), (1, nl, 1, 1))
+        # uCl2_uDl2_mat = np.tile(uCl2_uDl2.reshape(1, nl, self.nz_for_Cls, self.nM), (nl, 1, 1, 1))
         
         dndlnm_array_mat = np.tile(
             self.hmf_Mz_mat_for_cov.reshape(1, 1, self.nz_for_Cls, self.nM), (nl, nl, 1, 1)
