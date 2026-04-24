@@ -8,8 +8,11 @@ from astropy import constants as const
 import interpax
 from jax_cosmo.scipy.integrate import simps
 import time
+import warnings
 import numpy as _np
 import math as _math
+
+_WARNED_ONCE: set = set()
 
 class get_Cl(get_Pkz):
     """
@@ -32,9 +35,10 @@ class get_Cl(get_Pkz):
                 self,
                 sim_params_dict: dict,
                 halo_params_dict: dict,
-                analysis_dict: dict,     
+                analysis_dict: dict,
                 other_params_dict: dict,
-                Pkz_obj=None
+                Pkz_obj=None,
+                build_1h2h_dict=True,
             ):    
         if Pkz_obj is None:
             super().__init__(sim_params_dict, halo_params_dict, analysis_dict, other_params_dict)
@@ -169,7 +173,9 @@ class get_Cl(get_Pkz):
                 )
                 self.Cl_y_y_tot_mat   = jnp.exp(log_interp(jnp.log(self.ell_array)))
                 self.Cl_y_y_noise_mat = self.Cl_y_y_tot_mat - self.Cl_y_y_signal_mat
-                print('Loaded yy total from file into Cl_y_y_tot_mat')
+                if 'yy_total' not in _WARNED_ONCE:
+                    warnings.warn('Loaded yy total from file into Cl_y_y_tot_mat', stacklevel=2)
+                    _WARNED_ONCE.add('yy_total')
             elif yy_noise_ell_fname is not None:
                 ell_yy_n, Cl_yy_n = _np.loadtxt(yy_noise_ell_fname, unpack=True, usecols=(0, 1))
                 log_noise_interp = interpax.Interpolator1D(
@@ -179,13 +185,18 @@ class get_Cl(get_Pkz):
                 )
                 self.Cl_y_y_noise_mat = jnp.exp(log_noise_interp(jnp.log(self.ell_array)))
                 self.Cl_y_y_tot_mat   = self.Cl_y_y_signal_mat + self.Cl_y_y_noise_mat
-                print('Loaded yy noise from file; Cl_y_y_tot_mat = theory + noise')
+                if 'yy_noise' not in _WARNED_ONCE:
+                    warnings.warn('Loaded yy noise from file; Cl_y_y_tot_mat = theory + noise', stacklevel=2)
+                    _WARNED_ONCE.add('yy_noise')
             else:
-                print('Warning: no yy-total or yy-noise file provided; Cl_y_y_tot_mat = theory only')
+                warnings.warn('no yy-total or yy-noise file provided; Cl_y_y_tot_mat = theory only', UserWarning, stacklevel=2)
                 self.Cl_y_y_noise_mat = jnp.zeros_like(self.Cl_y_y_signal_mat)
                 self.Cl_y_y_tot_mat   = self.Cl_y_y_signal_mat
 
-        self._build_cls_1h2h_dict()
+        # _build_cls_1h2h_dict uses numpy/Python and is not JAX-traceable.
+        # Skip during MCMC (pass build_1h2h_dict=False); call manually for diagnostics.
+        if build_1h2h_dict:
+            self._build_cls_1h2h_dict()
 
 
 
@@ -437,7 +448,7 @@ class get_Cl(get_Pkz):
             elif beam_pow == 2:
                 Pk_lz *= (Bl ** 2)[:, None]
             integrand = (W1 * W2 * chi_cls ** 2 * dchi)[None, :] * Pk_lz
-            Cl = _np.trapz(integrand, z_cls, axis=1)
+            Cl = _np.trapezoid(integrand, z_cls, axis=1)
             return ell_fac * Cl
 
         panels = {}
