@@ -94,7 +94,7 @@ halo_params:
 
 
   conc_model: Diemer15
-
+ 
 other_params:
   alpha_ky : 1.0
   A_IA : 0
@@ -109,7 +109,7 @@ analysis:
 
   zmin_for_Cls: 0.01
   zmax_for_Cls: 1.6
-  nz_for_Cls: 128
+  nz_for_Cls: 64
 
   # fsky_yy: 0.4
   # fsky_ky: 0.4

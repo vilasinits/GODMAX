@@ -144,7 +144,7 @@ analysis:
     z_array_source:
       - 0.01
       - 1.5
-      - 128
+      - 22 #128
     nz0:
       - 1.0
   nz_lens_info_dict:
@@ -152,13 +152,13 @@ analysis:
     z_array_lens:
       - 0.01
       - 1.5
-      - 128
+      - 22 #128
     nz0:
       - 1.0
 
   zmin_for_Cls: 0.01
   zmax_for_Cls: 1.6
-  nz_for_Cls: 128
+  nz_for_Cls: 22 #128
 
   angles_data_array:
     - 2.5
