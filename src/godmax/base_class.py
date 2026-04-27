@@ -330,8 +330,10 @@ class base_class:
         self.z0_IA = other_params_dict.get('z0_IA', 0.62)
         self.C1_bar = other_params_dict.get('C1_rhocrit', 0.0134)
         self.C1_rho_m_bar = self.C1_bar * self.cosmo_params['Om0']
-        self.Delta_z_bias_array = jnp.array(other_params_dict.get('Delta_z_bias_array', [0.0]))
-        self.mult_shear_bias_array = jnp.array(other_params_dict.get('mult_shear_bias_array', [0.0]))
+        _dz = other_params_dict.get('Delta_z_bias_array', [0.0])
+        self.Delta_z_bias_array = jnp.broadcast_to(jnp.array(_dz), (self.nbins,)) if len(_dz) == 1 else jnp.array(_dz)
+        _ms = other_params_dict.get('mult_shear_bias_array', [0.0])
+        self.mult_shear_bias_array = jnp.broadcast_to(jnp.array(_ms), (self.nbins,)) if len(_ms) == 1 else jnp.array(_ms)
 
         self.tSZ_transition_model = analysis_dict.get('tSZ_transition_model', 'poweradd')
         self.alpha_ky = other_params_dict.get('alpha_ky', 1.0)

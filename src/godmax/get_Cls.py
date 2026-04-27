@@ -38,7 +38,7 @@ class get_Cl(get_Pkz):
                 analysis_dict: dict,
                 other_params_dict: dict,
                 Pkz_obj=None,
-                build_1h2h_dict=True,
+                build_1h2h_dict=False,
             ):    
         if Pkz_obj is None:
             super().__init__(sim_params_dict, halo_params_dict, analysis_dict, other_params_dict)

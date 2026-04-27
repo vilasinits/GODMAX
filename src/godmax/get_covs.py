@@ -123,15 +123,18 @@ class get_cov(get_Cl):
         }
         self.Cl_result_dict['yy']['bin_combs'] = [[0, 0]]
 
-        sigma_epsilon_SN_bins = analysis_dict.get('sigma_epsilon_SN_bins', jnp.zeros(self.nbins))
+        _sn_sig = analysis_dict.get('sigma_epsilon_SN_bins', [0.0] * self.nbins)
+        sigma_epsilon_SN_bins = jnp.broadcast_to(jnp.array(_sn_sig), (self.nbins,)) if len(_sn_sig) == 1 else jnp.array(_sn_sig)
         if 'sigma_epsilon_SN_bins' not in analysis_dict:
             print('Warning: sigma_epsilon_SN_bins not provided, using zeros')
 
-        neff_arcmin2_SN_bins = analysis_dict.get('neff_arcmin2_SN_bins', jnp.ones(self.nbins))
+        _neff = analysis_dict.get('neff_arcmin2_SN_bins', [1.0] * self.nbins)
+        neff_arcmin2_SN_bins = jnp.broadcast_to(jnp.array(_neff), (self.nbins,)) if len(_neff) == 1 else jnp.array(_neff)
         if 'neff_arcmin2_SN_bins' not in analysis_dict:
             print('Warning: neff_arcmin2_SN_bins not provided, using ones')
 
-        nbar_lens_bins = analysis_dict.get('nbar_lens_bins', jnp.ones(self.nbins_lens))
+        _nbar = analysis_dict.get('nbar_lens_bins', [1.0] * self.nbins_lens)
+        nbar_lens_bins = jnp.broadcast_to(jnp.array(_nbar), (self.nbins_lens,)) if len(_nbar) == 1 else jnp.array(_nbar)
         if 'nbar_lens_bins' not in analysis_dict:
             print('Warning: nbar_lens_bins not provided, using ones')
 
