@@ -95,11 +95,11 @@ def main():
 
     curr_path = pathlib.Path().absolute()
     abs_path_src = os.path.abspath(curr_path / "../../src/") 
-    sys.path.append(str(abs_path_src))
-    from get_B12_profile import Battaglia_12_16
+    sys.path.append(os.path.join(str(abs_path_src), 'arxiv'))
+    from godmax.get_B12_profile import Battaglia_12_16
     import jax_cosmo.background as bkgrd
-    import helpers.constants as constants
-    from get_sim_maps import get_sim_map
+    import godmax.helpers.constants as constants
+    from godmax.get_sim_maps import get_sim_map
 
     def read_yaml(file_path):
         with open(file_path, 'r') as file: return yaml.safe_load(file)

@@ -330,7 +330,17 @@ class base_class:
         self.z0_IA = other_params_dict.get('z0_IA', 0.62)
         self.C1_bar = other_params_dict.get('C1_rhocrit', 0.0134)
         self.C1_rho_m_bar = self.C1_bar * self.cosmo_params['Om0']
+        if 'Delta_z_bias_array' in other_params_dict and len(other_params_dict['Delta_z_bias_array']) < self.nbins:
+            raise ValueError(
+                f"Delta_z_bias_array has {len(other_params_dict['Delta_z_bias_array'])} element(s) but nbins={self.nbins}. "
+                f"Check your parameter file."
+            )
         self.Delta_z_bias_array = jnp.array(other_params_dict.get('Delta_z_bias_array', [0.0]))
+        if 'mult_shear_bias_array' in other_params_dict and len(other_params_dict['mult_shear_bias_array']) < self.nbins:
+            raise ValueError(
+                f"mult_shear_bias_array has {len(other_params_dict['mult_shear_bias_array'])} element(s) but nbins={self.nbins}. "
+                f"Check your parameter file."
+            )
         self.mult_shear_bias_array = jnp.array(other_params_dict.get('mult_shear_bias_array', [0.0]))
 
         self.tSZ_transition_model = analysis_dict.get('tSZ_transition_model', 'poweradd')

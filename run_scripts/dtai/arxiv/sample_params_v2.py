@@ -18,7 +18,7 @@ abs_path_params = os.path.abspath(curr_path / "../../param_files/")
 sys.path.append((curr_path))
 sys.path.append((abs_path_data))
 sys.path.append((abs_path_results))
-sys.path.append(abs_path_src)
+sys.path.append(os.path.join(str(abs_path_src), 'arxiv'))
 
 import numpyro
 numpyro.set_platform("gpu")
@@ -40,12 +40,12 @@ import copy
 import yaml
 from deepmerge import always_merger
 
-from base_class import base_class
-from get_radial_profiles import Profiles
-from get_Pkzs import get_Pkz
-from get_Cls import get_Cl
-from get_Xis import get_xi
-from get_covs import get_cov
+from godmax.base_class import base_class
+from godmax.get_radial_profiles import Profiles
+from godmax.get_Pkzs import get_Pkz
+from godmax.get_Cls import get_Cl
+from godmax.get_Xis import get_xi
+from godmax.get_covs import get_cov
 
 
 deproj = sys.argv[1]

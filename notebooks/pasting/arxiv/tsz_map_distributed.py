@@ -55,11 +55,11 @@ abs_path_results = os.path.abspath(curr_path / "../../results/")
 sys.path.append((curr_path))
 sys.path.append((abs_path_data))
 sys.path.append((abs_path_results))
-sys.path.append(abs_path_src)
+sys.path.append(os.path.join(str(abs_path_src), 'arxiv'))
 import jax_cosmo.background as bkgrd
-from get_B12_profile import Battaglia_12_16
-import helpers.constants as constants
-from get_sim_maps import get_sim_map
+from godmax.get_B12_profile import Battaglia_12_16
+import godmax.helpers.constants as constants
+from godmax.get_sim_maps import get_sim_map
 
 # ==============================================================================
 # Configuration Functions

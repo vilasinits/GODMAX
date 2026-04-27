@@ -54,15 +54,15 @@ abs_path_data = project_base / "data"
 abs_path_src = project_base / "src"
 abs_path_results = project_base / "results"
 
-for path in [curr_path, abs_path_data, abs_path_src, abs_path_results]:
+for path in [curr_path, abs_path_data, abs_path_results]:
     sys.path.append(str(path))
+sys.path.append(os.path.join(str(abs_path_src), 'arxiv'))
 
 # --- Import Custom Modules ---
-from get_radial_profiles import Profiles
-from get_sim_maps import setup_sim_map, get_sim_map
-import helpers.constants as constants
-from get_B12_profile import Battaglia_12_16
-import helpers.constants as constants
+from godmax.get_radial_profiles import Profiles
+from godmax.get_sim_maps import setup_sim_map, get_sim_map
+import godmax.helpers.constants as constants
+from godmax.get_B12_profile import Battaglia_12_16
 
 nside = int(ast.literal_eval(sys.argv[1]))
 print('nside: ', nside)

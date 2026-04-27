@@ -18,7 +18,7 @@ abs_path_results = os.path.abspath(curr_path / "../../results/")
 sys.path.append((curr_path))
 sys.path.append((abs_path_data))
 sys.path.append((abs_path_results))
-sys.path.append(abs_path_src)
+sys.path.append(os.path.join(str(abs_path_src), 'arxiv'))
 import numpyro
 numpyro.set_platform("gpu")
 numpyro.enable_x64()
