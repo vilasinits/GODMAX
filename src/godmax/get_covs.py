@@ -123,35 +123,32 @@ class get_cov(get_Cl):
         }
         self.Cl_result_dict['yy']['bin_combs'] = [[0, 0]]
 
-        _sn_sig = analysis_dict.get('sigma_epsilon_SN_bins', [0.0])
         if 'sigma_epsilon_SN_bins' not in analysis_dict:
             print('Warning: sigma_epsilon_SN_bins not provided, using zeros')
-        elif len(_sn_sig) < self.nbins:
+        elif len(analysis_dict['sigma_epsilon_SN_bins']) < self.nbins:
             raise ValueError(
-                f"sigma_epsilon_SN_bins has {len(_sn_sig)} element(s) but nbins={self.nbins}. "
+                f"sigma_epsilon_SN_bins has {len(analysis_dict['sigma_epsilon_SN_bins'])} element(s) but nbins={self.nbins}. "
                 f"Check your parameter file."
             )
-        sigma_epsilon_SN_bins = jnp.array(_sn_sig[:self.nbins])
+        sigma_epsilon_SN_bins = jnp.array(analysis_dict.get('sigma_epsilon_SN_bins', [0.0]))
 
-        _neff = analysis_dict.get('neff_arcmin2_SN_bins', [1.0])
         if 'neff_arcmin2_SN_bins' not in analysis_dict:
             print('Warning: neff_arcmin2_SN_bins not provided, using ones')
-        elif len(_neff) < self.nbins:
+        elif len(analysis_dict['neff_arcmin2_SN_bins']) < self.nbins:
             raise ValueError(
-                f"neff_arcmin2_SN_bins has {len(_neff)} element(s) but nbins={self.nbins}. "
+                f"neff_arcmin2_SN_bins has {len(analysis_dict['neff_arcmin2_SN_bins'])} element(s) but nbins={self.nbins}. "
                 f"Check your parameter file."
             )
-        neff_arcmin2_SN_bins = jnp.array(_neff[:self.nbins])
+        neff_arcmin2_SN_bins = jnp.array(analysis_dict.get('neff_arcmin2_SN_bins', [1.0]))
 
-        _nbar = analysis_dict.get('nbar_lens_bins', [1.0])
         if 'nbar_lens_bins' not in analysis_dict:
             print('Warning: nbar_lens_bins not provided, using ones')
-        elif len(_nbar) < self.nbins_lens:
+        elif len(analysis_dict['nbar_lens_bins']) < self.nbins_lens:
             raise ValueError(
-                f"nbar_lens_bins has {len(_nbar)} element(s) but nbins_lens={self.nbins_lens}. "
+                f"nbar_lens_bins has {len(analysis_dict['nbar_lens_bins'])} element(s) but nbins_lens={self.nbins_lens}. "
                 f"Check your parameter file."
             )
-        nbar_lens_bins = jnp.array(_nbar[:self.nbins_lens])
+        nbar_lens_bins = jnp.array(analysis_dict.get('nbar_lens_bins', [1.0]))
 
 
         bin_combs_ky = []

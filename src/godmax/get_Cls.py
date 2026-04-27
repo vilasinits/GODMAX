@@ -38,7 +38,7 @@ class get_Cl(get_Pkz):
                 analysis_dict: dict,
                 other_params_dict: dict,
                 Pkz_obj=None,
-                build_1h2h_dict=True,
+                build_1h2h_dict=False,
             ):    
         if Pkz_obj is None:
             super().__init__(sim_params_dict, halo_params_dict, analysis_dict, other_params_dict)
@@ -393,76 +393,78 @@ class get_Cl(get_Pkz):
         All Dl arrays have shape (nell,) and units matching the Cl attributes
         (multiply by 1e12 for typical plot scaling).
         """
-        from math import pi as _pi
-
-        # ---- numpy copies of integration arrays ----
-        ell     = _np.array(self.ell_array)
-        ell_fac = ell * (ell + 1) / (2.0 * _pi)
-        z_cls   = _np.array(self.z_array_for_Cls)
-        chi_cls = _np.array(self.chi_array_for_Cls)
-        dchi    = _np.array(self.dchi_dz_array_for_Cls)
-        z_Pk    = _np.array(self.z_array)
-        kPk     = _np.array(self.kPk_array)
-        nell    = len(ell)
-        nz      = len(z_cls)
+        # ---- integration arrays (JAX — safe under tracing) ----
+        ell     = self.ell_array
+        ell_fac = ell * (ell + 1) / (2.0 * _math.pi)
+        z_cls   = self.z_array_for_Cls
+        chi_cls = self.chi_array_for_Cls
+        dchi    = self.dchi_dz_array_for_Cls
+        z_Pk    = self.z_array
+        kPk     = self.kPk_array
+        nell    = ell.shape[0]
 
         if self.model_tSZ:
-            Bl = _np.exp(-0.5 * ell * (ell + 1) * float(self.sig_beam) ** 2)
+            Bl = jnp.exp(-0.5 * ell * (ell + 1) * float(self.sig_beam) ** 2)
         else:
-            Bl = _np.ones(nell)
+            Bl = jnp.ones(nell)
 
-        mult   = _np.array(self.mult_shear_bias_array)
-        Wk     = _np.array(self.Wk_mat)
-        Wk_eff = _np.array([
-            (1.0 + mult[jb]) * Wk[jb] / _np.maximum(chi_cls ** 2, 1e-10)
-            for jb in range(self.nbins)
-        ])
-        Wy_eff = _np.array(self.Wy_array) / _np.maximum(chi_cls ** 2, 1e-10)
+        # Kernel matrices — vectorised, no per-bin loops
+        mult   = self.mult_shear_bias_array                             # (nbins,)
+        Wk     = self.Wk_mat                                            # (nbins, nz)
+        Wk_eff = (1.0 + mult[:, None]) * Wk / jnp.maximum(chi_cls[None, :] ** 2, 1e-10)
+        Wy_eff = self.Wy_array / jnp.maximum(chi_cls ** 2, 1e-10)
 
         if self.model_galaxies:
-            Wg = _np.array(self.Wg_mat)
-            Wg_eff = _np.array([
-                Wg[jb] / _np.maximum(dchi * chi_cls ** 2, 1e-10)
-                for jb in range(self.nbins_lens)
-            ])
+            Wg     = self.Wg_mat                                        # (nbins_lens, nz)
+            Wg_eff = Wg / jnp.maximum(dchi[None, :] * chi_cls[None, :] ** 2, 1e-10)
+
+        lkPk   = jnp.log(kPk)
+        lz_Pk  = jnp.log(jnp.maximum(z_Pk,  1e-10))
+        lz_cls = jnp.log(jnp.maximum(z_cls,  1e-10))
 
         def _limber_cl(Pkz_kz, W1, W2, beam_pow=0):
-            Pkz  = _np.maximum(_np.asarray(Pkz_kz), 1e-100)
-            lkPk = _np.log(kPk)
-            lz_Pk  = _np.log(_np.maximum(z_Pk, 1e-10))
-            lz_cls = _np.log(_np.maximum(z_cls, 1e-10))
-            Pkz_zcls = _np.vstack([
-                _np.exp(_np.interp(lz_cls, lz_Pk, _np.log(_np.maximum(Pkz[ik, :], 1e-100))))
-                for ik in range(len(kPk))
-            ])
-            log_Pkz_zcls = _np.log(_np.maximum(Pkz_zcls, 1e-100))
-            k_ell_mat = _np.outer(ell + 0.5, 1.0 / _np.maximum(chi_cls, 1.0))
-            log_k_ell = _np.log(_np.maximum(k_ell_mat, 1e-100))
-            Pk_lz = _np.zeros((nell, nz))
-            for iz in range(nz):
-                Pk_lz[:, iz] = _np.exp(
-                    _np.interp(log_k_ell[:, iz], lkPk, log_Pkz_zcls[:, iz])
+            Pkz = jnp.maximum(Pkz_kz, 1e-100)                          # (nk, nz_Pk)
+
+            # Interpolate each k-row of Pkz onto z_cls grid → (nk, nz_cls)
+            Pkz_zcls = vmap(
+                lambda pk_row: jnp.exp(
+                    jnp.interp(lz_cls, lz_Pk, jnp.log(jnp.maximum(pk_row, 1e-100)))
                 )
+            )(Pkz)
+
+            log_Pkz_zcls = jnp.log(jnp.maximum(Pkz_zcls, 1e-100))
+            k_ell_mat    = jnp.outer(ell + 0.5, 1.0 / jnp.maximum(chi_cls, 1.0))
+            log_k_ell    = jnp.log(jnp.maximum(k_ell_mat, 1e-100))    # (nell, nz_cls)
+
+            # For each z-column, interpolate P over k → (nell, nz_cls)
+            Pk_lz = jnp.exp(
+                vmap(
+                    lambda log_k_col, log_Pk_col: jnp.interp(log_k_col, lkPk, log_Pk_col),
+                    in_axes=(1, 1), out_axes=1,
+                )(log_k_ell, log_Pkz_zcls)
+            )
+
             if beam_pow == 1:
-                Pk_lz *= Bl[:, None]
+                Pk_lz = Pk_lz * Bl[:, None]
             elif beam_pow == 2:
-                Pk_lz *= (Bl ** 2)[:, None]
+                Pk_lz = Pk_lz * (Bl ** 2)[:, None]
+
             integrand = (W1 * W2 * chi_cls ** 2 * dchi)[None, :] * Pk_lz
-            Cl = _np.trapezoid(integrand, z_cls, axis=1)
+            Cl = jnp.trapezoid(integrand, z_cls, axis=1)
             return ell_fac * Cl
 
         panels = {}
 
         if self.model_tSZ:
             panels['yy'] = [{'label': 'yy',
-                'tot': ell_fac * _np.array(self.Cl_y_y_signal_mat),
+                'tot': ell_fac * self.Cl_y_y_signal_mat,
                 '1h' : _limber_cl(self.Pyy_1h_kz_mat, Wy_eff, Wy_eff, beam_pow=2),
                 '2h' : _limber_cl(self.Pyy_2h_kz_mat, Wy_eff, Wy_eff, beam_pow=2),
             }]
             ky_curves = []
             for jb in range(self.nbins):
                 ky_curves.append({'label': f'b{jb}',
-                    'tot': ell_fac * _np.array(self.Cl_kappa_y_tot_mat[:, jb]),
+                    'tot': ell_fac * self.Cl_kappa_y_tot_mat[:, jb],
                     '1h' : _limber_cl(self.Pym_1h_kz_mat, Wk_eff[jb], Wy_eff, beam_pow=1),
                     '2h' : _limber_cl(self.Pym_2h_kz_mat, Wk_eff[jb], Wy_eff, beam_pow=1),
                 })
@@ -472,7 +474,7 @@ class get_Cl(get_Pkz):
         for jb1 in range(self.nbins):
             for jb2 in range(jb1, self.nbins):
                 kk_curves.append({'label': f'({jb1},{jb2})',
-                    'tot': ell_fac * _np.array(self.Cl_kappa_kappa_tot_mat[:, jb1, jb2]),
+                    'tot': ell_fac * self.Cl_kappa_kappa_tot_mat[:, jb1, jb2],
                     '1h' : _limber_cl(self.Pmm_dmb_1h_kz_mat, Wk_eff[jb1], Wk_eff[jb2]),
                     '2h' : _limber_cl(self.Pmm_dmb_2h_kz_mat, Wk_eff[jb1], Wk_eff[jb2]),
                 })
@@ -482,7 +484,7 @@ class get_Cl(get_Pkz):
             gy_curves = []
             for jb in range(self.nbins_lens):
                 gy_curves.append({'label': f'b{jb}',
-                    'tot': ell_fac * _np.array(self.Cl_gal_y_tot_mat[:, jb]),
+                    'tot': ell_fac * self.Cl_gal_y_tot_mat[:, jb],
                     '1h' : _limber_cl(self.Pgy_1h_kz_mat, Wg_eff[jb], Wy_eff, beam_pow=1),
                     '2h' : _limber_cl(self.Pgy_2h_kz_mat, Wg_eff[jb], Wy_eff, beam_pow=1),
                 })
@@ -493,7 +495,7 @@ class get_Cl(get_Pkz):
             for jb1 in range(self.nbins_lens):
                 for jb2 in range(self.nbins):
                     gk_curves.append({'label': f'({jb1},{jb2})',
-                        'tot': ell_fac * _np.array(self.Cl_gal_kappa_tot_mat[:, jb1, jb2]),
+                        'tot': ell_fac * self.Cl_gal_kappa_tot_mat[:, jb1, jb2],
                         '1h' : _limber_cl(self.Pgm_1h_kz_mat, Wg_eff[jb1], Wk_eff[jb2]),
                         '2h' : _limber_cl(self.Pgm_2h_kz_mat, Wg_eff[jb1], Wk_eff[jb2]),
                     })
@@ -503,7 +505,7 @@ class get_Cl(get_Pkz):
             for jb1 in range(self.nbins_lens):
                 for jb2 in range(jb1, self.nbins_lens):
                     gg_curves.append({'label': f'({jb1},{jb2})',
-                        'tot': ell_fac * _np.array(self.Cl_gal_gal_tot_mat[:, jb1, jb2]),
+                        'tot': ell_fac * self.Cl_gal_gal_tot_mat[:, jb1, jb2],
                         '1h' : _limber_cl(self.Pgg_1h_kz_mat, Wg_eff[jb1], Wg_eff[jb2]),
                         '2h' : _limber_cl(self.Pgg_2h_kz_mat, Wg_eff[jb1], Wg_eff[jb2]),
                     })
