@@ -123,20 +123,35 @@ class get_cov(get_Cl):
         }
         self.Cl_result_dict['yy']['bin_combs'] = [[0, 0]]
 
-        _sn_sig = analysis_dict.get('sigma_epsilon_SN_bins', [0.0] * self.nbins)
-        sigma_epsilon_SN_bins = jnp.broadcast_to(jnp.array(_sn_sig), (self.nbins,)) if len(_sn_sig) == 1 else jnp.array(_sn_sig)
+        _sn_sig = analysis_dict.get('sigma_epsilon_SN_bins', [0.0])
         if 'sigma_epsilon_SN_bins' not in analysis_dict:
             print('Warning: sigma_epsilon_SN_bins not provided, using zeros')
+        elif len(_sn_sig) < self.nbins:
+            raise ValueError(
+                f"sigma_epsilon_SN_bins has {len(_sn_sig)} element(s) but nbins={self.nbins}. "
+                f"Check your parameter file."
+            )
+        sigma_epsilon_SN_bins = jnp.array(_sn_sig[:self.nbins])
 
-        _neff = analysis_dict.get('neff_arcmin2_SN_bins', [1.0] * self.nbins)
-        neff_arcmin2_SN_bins = jnp.broadcast_to(jnp.array(_neff), (self.nbins,)) if len(_neff) == 1 else jnp.array(_neff)
+        _neff = analysis_dict.get('neff_arcmin2_SN_bins', [1.0])
         if 'neff_arcmin2_SN_bins' not in analysis_dict:
             print('Warning: neff_arcmin2_SN_bins not provided, using ones')
+        elif len(_neff) < self.nbins:
+            raise ValueError(
+                f"neff_arcmin2_SN_bins has {len(_neff)} element(s) but nbins={self.nbins}. "
+                f"Check your parameter file."
+            )
+        neff_arcmin2_SN_bins = jnp.array(_neff[:self.nbins])
 
-        _nbar = analysis_dict.get('nbar_lens_bins', [1.0] * self.nbins_lens)
-        nbar_lens_bins = jnp.broadcast_to(jnp.array(_nbar), (self.nbins_lens,)) if len(_nbar) == 1 else jnp.array(_nbar)
+        _nbar = analysis_dict.get('nbar_lens_bins', [1.0])
         if 'nbar_lens_bins' not in analysis_dict:
             print('Warning: nbar_lens_bins not provided, using ones')
+        elif len(_nbar) < self.nbins_lens:
+            raise ValueError(
+                f"nbar_lens_bins has {len(_nbar)} element(s) but nbins_lens={self.nbins_lens}. "
+                f"Check your parameter file."
+            )
+        nbar_lens_bins = jnp.array(_nbar[:self.nbins_lens])
 
 
         bin_combs_ky = []
