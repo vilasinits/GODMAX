@@ -123,15 +123,29 @@ halo_params:
 
 analysis:
   backreaction: True
+  # --- no-baryonification: start ---
+  # Set to False to use NFW baseline for gκ (matter leg) and κy/gy/yy (pressure leg).
+  # κκ no-bary baseline is controlled separately via model_matter: halofit.
+  baryonification: True
+  # --- no-baryonification: end ---
   model_galaxies: True
   model_tSZ: True
   num_points_trapz_int: 32
   num_points_gal_cal: 32
   calc_nfw_only: True
   beam_fwhm_arcmin: 1.6
-  verbose_time: False  
+  verbose_time: False
   analysis_coords: fourier
   tSZ_transition_model: poweradd
+
+  # ------------------------------------------------------------
+  # BARYONIFICATION CONTROL
+  # ------------------------------------------------------------
+  # Options:
+  #   off       : use NFW matter profiles and no baryonic response
+  #   physical  : use DMB matter profiles and S_bary = Pmm_dmb / Pmm_nfw
+  #   old       : reproduce the previous implementation as closely as possible
+  baryonification_mode: old
 
   nbar_gal_comoving_zarray:
     - 0.01
@@ -197,3 +211,5 @@ analysis:
     - 4.64
     - 4.64
     - 4.64
+
+  

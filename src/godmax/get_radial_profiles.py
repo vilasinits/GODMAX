@@ -50,12 +50,24 @@ class Profiles(base_class):
         self.get_DMO_profiles()
         self.run_stars_calc()
         self.run_gas_calc()
+        # --- no-baryonification: start ---
+        # Force backreaction=False so run_clm_calc uses rho_clm = f_clm * rho_nfw (ζ=1).
+        # Without this, adiabatic relaxation (Eq. 11) displaces satellite shells via the
+        # gas/stellar mass, making u_clm ≠ f_clm*u_nfw even in the no-bary run.
+        # This affects both gg (satellite leg) and the galaxy leg of gκ.
+        if not self.baryonification:
+            self.backreaction = False
+        # --- no-baryonification: end ---
         self.run_clm_calc()
         self.run_cga_calc()
         self.run_dmb_calc()
         
         if self.model_tSZ:
             self.run_pressure_calc()
+            # --- no-baryonification: start ---
+            if not self.baryonification:
+                self.run_pressure_calc_nfw()
+            # --- no-baryonification: end ---
 
     def timing_decorator(func):
         """Decorator to time a function if the instance or class enables timing."""
@@ -161,6 +173,11 @@ class Profiles(base_class):
             
         # Calculate total mass
         self.Mtot_mat = get_vmapped_func(self.get_Mtot, 2)(jnp.arange(self.nz), jnp.arange(self.nM)).T
+
+        # --- no-baryonification: start ---
+        # Cumulative NFW mass profile M_nfw(<r) — needed for no-bary HSE pressure
+        self.Mnfw_mat = get_vmapped_func(self.get_Mnfw, 3)(jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)).T
+        # --- no-baryonification: end ---
 
     @timing_decorator
     def run_stars_calc(self):
@@ -875,4 +892,49 @@ class Profiles(base_class):
             r = r_array_here[jr]
         Pnt_fac = self.alpha_nt * self.get_fz_Pnt(jz) * ((r / self.r200c_mat[jz, jM])**self.n_nt)
         return Pnt_fac
+
+    # --- no-baryonification: start ---
+    @partial(jit, static_argnums=(0,))
+    def get_Ptot_nfw(self, jr, jz, jM, r_array_here=None, rmax_r200c=6):
+        '''HSE pressure with NFW gravitational potential and NFW-scaled baryon profile.
+        Implements simultaneous replacements in Eq. 14:
+          rho_gas   -> (Ob/Om) * rho_nfw   (LHS of HSE)
+          M_dmb(<r) -> M_nfw(<r)            (RHS gravitational potential)
+        '''
+        if r_array_here is None:
+            r = self.r_array[jr]
+        else:
+            r = r_array_here[jr]
+        logx = jnp.linspace(jnp.log(r), jnp.log(rmax_r200c * self.r200c_mat[jz, jM]), self.num_points_trapz_int)
+        x = jnp.exp(logx)
+        fb = self.cosmo_params['Ob0'] / self.cosmo_params['Om0']
+        fx1 = fb * (vmap(self.get_rho_nfw_normed, (0, None, None, None))(jnp.arange(len(logx)), jz, jM, x))
+        fx2 = jnp.exp(jnp.interp(logx, jnp.log(self.r_array), jnp.log(self.Mnfw_mat[:, jz, jM])))
+        fx = (fx1 * fx2 * G_new / x**2) * x
+        Ptot = jsi.trapezoid(fx, x=logx)
+        Ptot = jnp.clip(Ptot, 1e-30) * (self.cosmo_params['H0'] / 100.)**2
+        return Ptot
+
+    @timing_decorator
+    def run_pressure_calc_nfw(self):
+        """NFW-baseline pressure profiles for the no-baryonification test.
+        Stores y3d_nfw_mat using get_Ptot_nfw (both HSE replacements applied simultaneously).
+        """
+        Ptot_mat = get_vmapped_func(self.get_Ptot_nfw, 3)(
+            jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)
+        ).T
+        Ptot_mat_physical = Ptot_mat / (self.scale_fac_a_array[None, :, None] ** 4)
+        Pnt_fac = get_vmapped_func(self.get_Pnt_fac, 3)(
+            jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)
+        ).T
+        Pth_mat_physical = Ptot_mat_physical * jnp.maximum(0, 1 - Pnt_fac)
+        Pe_mat_physical_nfw = Pth_mat_physical / 1.932
+        sigmat = const.sigma_T
+        m_e = const.m_e
+        c = const.c
+        coeff = sigmat / (m_e * (c ** 2))
+        oneMpc = (((10 ** 6)) * (u.pc).to(u.m)) * (u.m)
+        const_coeff = (((coeff * oneMpc).to(((u.cm ** 3) / u.keV))).value) / (self.cosmo_params['H0'] / 100.)
+        self.y3d_nfw_mat = const_coeff * Pe_mat_physical_nfw
+    # --- no-baryonification: end ---
 

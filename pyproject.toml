@@ -53,3 +53,7 @@ where = ["src"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "black", "flake8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"

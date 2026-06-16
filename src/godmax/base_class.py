@@ -259,6 +259,7 @@ class base_class:
         self.do_corr_2h_mm = halo_params_dict.get('do_corr_2h_mm',True)
 
         self.backreaction = analysis_dict.get('backreaction', True)
+        self.baryonification = analysis_dict.get('baryonification', True)
         self.model_galaxies = analysis_dict.get('model_galaxies',True)
         self.model_tSZ = analysis_dict.get('model_tSZ',True)
         # Weather to model the matter with full baryonic effects or just with halofit, for shear-2pt chains
@@ -346,6 +347,15 @@ class base_class:
         self.tSZ_transition_model = analysis_dict.get('tSZ_transition_model', 'poweradd')
         self.alpha_ky = other_params_dict.get('alpha_ky', 1.0)
         self.alpha_gy = other_params_dict.get('alpha_gy', 1.0)
+
+        for _flag in [
+            'use_baryonification', 'apply_hm_to_halofit_norm',
+            'apply_bary_response_to_ym', 'apply_bary_response_to_ge',
+            'apply_bary_response_to_gy', 'apply_bary_response_to_gg',
+        ]:
+            _val = analysis_dict.get(_flag, None)
+            if _val is not None:
+                setattr(self, _flag, _val)
 
     @timing_decorator
     def get_power_spectra_cosmo(self):

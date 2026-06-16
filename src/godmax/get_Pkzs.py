@@ -153,6 +153,89 @@ class get_Pkz(Profiles):
                 self.Pgy_tot_mat = self.Pgy_tot_mat * self.Pmm_sup_tot_mat
             self.Pgg_tot_mat = (self.Pgg_1h_kz_mat + self.Pgg_2h_kz_mat) * self.Pmm_sup_tot_mat
 
+        # --- no-baryonification: start ---
+        # When baryonification=False, replace baryonified power spectra with NFW-only baselines:
+        #   gκ   : matter leg  rho_dmb -> rho_nfw  (Pgm_nfw already computed above)
+        #   κy/gy/yy: pressure leg  rho_gas,(M_dmb) -> (Ob/Om)*rho_nfw, M_nfw  (via y3d_nfw_mat)
+        if not self.baryonification:
+            # gκ: swap to NFW matter leg (no tSZ dependence)
+            if self.model_galaxies:
+                self.Pgm_tot_mat = self.Pgm_nfw_tot_mat
+                self.Pgm_1h_kz_mat = self.Pgm_nfw_1h_kz_mat
+                self.Pgm_2h_kz_mat = self.Pgm_nfw_2h_kz_mat
+
+            # κy / gy / yy: FFTlog the NFW-pressure profile and rebuild all y power spectra
+            if self.model_tSZ:
+                _, uk_y_nfw_raw = xi2P_obj(self.y3d_nfw_mat, axis=0, extrap=False)
+                uk_y_nfw_tointp = jnp.array(uk_y_nfw_raw)
+
+                # Interpolate from k_mcfit grid to kPk_array for all (jz, jM)
+                log_k = jnp.log(self.k_mcfit)
+                log_kPk = jnp.log(self.kPk_array)
+                # uk_y_nfw_tointp shape: [nk_mcfit, nz, nM]
+                # .T -> [nM, nz, nk_mcfit]; vmap(vmap(f)) -> [nM, nz, nk]; .transpose -> [nk, nz, nM]
+                def _interp_uk(uk_vec):
+                    # Old: clamp at k_mcfit[0] → spurious low-k ratio offset
+                    # return jnp.exp(jnp.interp(log_kPk, log_k, jnp.log(jnp.clip(uk_vec, 1e-30, jnp.inf))))
+                    log_uv        = jnp.log(jnp.clip(uk_vec, 1e-30, jnp.inf))
+                    log_ui        = jnp.interp(log_kPk, log_k, log_uv)
+                    slope_left    = (log_uv[1] - log_uv[0]) / (log_k[1] - log_k[0])
+                    log_ue        = jnp.minimum(log_uv[0] + slope_left * (log_kPk - log_k[0]), 0.0)
+                    return jnp.exp(jnp.where(log_kPk < log_k[0], log_ue, log_ui))
+                uk_y_nfw = vmap(vmap(_interp_uk))(uk_y_nfw_tointp.T).transpose(2, 1, 0)  # [nk, nz, nM]
+
+                # 2h bias for NFW-pressure y
+                def _by_nfw(jk, jz):
+                    return jsi.trapezoid(
+                        uk_y_nfw[jk, jz, :] * self.hmf_Mz_mat[jz, :] * self.bias_Mz_mat[jz, :],
+                        x=jnp.log(self.M_array)
+                    )
+                by_nfw_kz_mat = vmap(vmap(_by_nfw, in_axes=(None, 0)), in_axes=(0, None))(
+                    jnp.arange(self.nk), jnp.arange(self.nz)
+                )  # [nk, nz]
+
+                # 1h integrals
+                def _P1h_ym_nfw(jk, jz):
+                    ukz_m = (self.Mtot_mat[jz, :] * self.uk_nfw[jk, jz, :]) / self.rhom_0
+                    return jsi.trapezoid(ukz_m * uk_y_nfw[jk, jz, :] * self.hmf_Mz_mat[jz, :], x=jnp.log(self.M_array))
+                Pym_nfw_1h = vmap(vmap(_P1h_ym_nfw, in_axes=(None, 0)), in_axes=(0, None))(
+                    jnp.arange(self.nk), jnp.arange(self.nz)
+                )  # [nk, nz]
+
+                # 2h term
+                Pym_nfw_2h = self.bm_nfw_kz_mat * by_nfw_kz_mat * self.plin_kz_mat
+                # (Pyy 1h/2h are NOT computed here — get_Cls recomputes them via
+                #  the overridden self.uk_y and self.by_kz_mat below)
+
+                # Total (same transition model as baryonified)
+                Pym_nfw_tot = ((Pym_nfw_1h)**(self.alpha_ky) + (Pym_nfw_2h)**(self.alpha_ky))**(1 / self.alpha_ky)
+                if self.tSZ_transition_model == 'response':
+                    Pym_nfw_tot = Pym_nfw_tot * self.Pmm_sup_tot_mat
+
+                # Override κy, yy attributes — get_Cls picks these up automatically
+                self.Pym_tot_mat = Pym_nfw_tot
+                self.Pym_1h_kz_mat = Pym_nfw_1h
+                self.Pym_2h_kz_mat = Pym_nfw_2h
+                self.uk_y = uk_y_nfw          # used by get_Cls for Pyy 1h via get_P_1h(3,3)
+                self.by_kz_mat = by_nfw_kz_mat  # used by get_Cls for Pyy 2h
+
+                if self.model_galaxies:
+                    def _P1h_gy_nfw(jk, jz):
+                        return jsi.trapezoid(
+                            self.ukg_cross[jk, jz, :] * uk_y_nfw[jk, jz, :] * self.hmf_Mz_mat[jz, :],
+                            x=jnp.log(self.M_array)
+                        )
+                    Pgy_nfw_1h = vmap(vmap(_P1h_gy_nfw, in_axes=(None, 0)), in_axes=(0, None))(
+                        jnp.arange(self.nk), jnp.arange(self.nz)
+                    )  # [nk, nz]
+                    Pgy_nfw_2h = self.bg_kz_mat * by_nfw_kz_mat * self.plin_kz_mat
+                    Pgy_nfw_tot = ((Pgy_nfw_1h)**(self.alpha_gy) + (Pgy_nfw_2h)**(self.alpha_gy))**(1 / self.alpha_gy)
+                    if self.tSZ_transition_model == 'response':
+                        Pgy_nfw_tot = Pgy_nfw_tot * self.Pmm_sup_tot_mat
+                    self.Pgy_tot_mat = Pgy_nfw_tot
+                    self.Pgy_1h_kz_mat = Pgy_nfw_1h
+                    self.Pgy_2h_kz_mat = Pgy_nfw_2h
+        # --- no-baryonification: end ---
 
 
     @partial(jit, static_argnums=(0,))
@@ -178,14 +261,27 @@ class get_Pkz(Profiles):
         # Compute uk_val based on the probe
         uk_val = compute_uk_val(probe)
 
-        # Perform interpolation in log space for stability
-        return jnp.exp(
-            jnp.interp(
-                jnp.log(self.kPk_array), 
-                jnp.log(self.k_mcfit), 
-                jnp.log(jnp.clip(uk_val, 1e-30, jnp.inf))
-            )
-        )
+        # Interpolate in log-log space; power-law extrapolate for k < k_mcfit[0]
+        # toward uk=1 (correct k→0 limit for any normalised profile).
+        # Old behaviour: clamp at k_mcfit[0] (caused spurious ratio≠1 at low k/ell)
+        # return jnp.exp(
+        #     jnp.interp(
+        #         jnp.log(self.kPk_array),
+        #         jnp.log(self.k_mcfit),
+        #         jnp.log(jnp.clip(uk_val, 1e-30, jnp.inf))
+        #     )
+        # )
+        log_k    = jnp.log(self.k_mcfit)
+        log_kPk  = jnp.log(self.kPk_array)
+        log_uk   = jnp.log(jnp.clip(uk_val, 1e-30, jnp.inf))
+
+        log_uk_interp = jnp.interp(log_kPk, log_k, log_uk)
+
+        # slope from first two FFTlog k-points; cap at 0 so uk ≤ 1
+        slope_left    = (log_uk[1] - log_uk[0]) / (log_k[1] - log_k[0])
+        log_uk_extrap = jnp.minimum(log_uk[0] + slope_left * (log_kPk - log_k[0]), 0.0)
+
+        return jnp.exp(jnp.where(log_kPk < log_k[0], log_uk_extrap, log_uk_interp))
     
     @partial(jit, static_argnums=(0,))
     def get_bias_Mz(self, jz, jM, mdef_delta=200):
