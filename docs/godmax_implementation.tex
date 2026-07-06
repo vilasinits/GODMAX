@@ -1,0 +1,975 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{mathtools}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  breaklines=true,
+  frame=single,
+}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\param}[1]{\texttt{\small #1}}
+\newcommand{\file}[1]{\textit{\small #1}}
+\newcommand{\lmax}{\ell_{\rm max}}
+\newcommand{\Msun}{M_\odot}
+\newcommand{\Mpc}{\,{\rm Mpc}/h}
+
+\title{\textbf{GODMAX: Implementation Details}\\
+\large Equations, Models, Parameters, and Source Code References}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+
+GODMAX is a differentiable JAX-based halo model code for computing angular power
+spectra of cosmological probes including galaxy clustering (G), thermal
+Sunyaev--Zel'dovich effect (y), and matter (weak) lensing convergence ($\kappa$). It
+implements the Baryonic Correction Model (BCM) of
+\cite{Schneider2015,Schneider2019} to account for baryonic effects on
+matter clustering, augmented with a pressure profile for the tSZ signal.
+
+\paragraph{Code structure.}
+The class hierarchy is:
+\[
+  \code{base\_class} \;\subset\; \code{Profiles} \;\subset\; \code{get\_Pkz}
+  \;\subset\; \code{get\_Cl}
+\]
+Each class inherits all attributes of its parent by copying \code{\_\_dict\_\_}
+when a pre-computed parent object is passed, avoiding redundant computation.
+
+\paragraph{Units.}
+Unless stated otherwise:
+\begin{itemize}
+  \item Masses in $h^{-1}\,M_\odot$
+  \item Distances in comoving $h^{-1}$\,Mpc
+  \item Wavenumber $k$ in $h\,{\rm Mpc}^{-1}$
+  \item Power spectra $P(k)$ in $(h^{-1}\,{\rm Mpc})^3$
+\end{itemize}
+
+%==============================================================================
+\section{Cosmology and Linear Power Spectrum}
+\label{sec:cosmo}
+%==============================================================================
+
+\paragraph{Parameters (\file{base\_class.py}: \code{read\_all\_input}).}
+The cosmology is described by the following parameters, read from
+\param{sim\_params\_dict['cosmo']}:
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Parameter & Symbol & Default & Description \\
+\midrule
+\param{H0} & $H_0$ & 67.2 & Hubble constant [km/s/Mpc] \\
+\param{Om0} & $\Omega_{\rm m}$ & 0.31 & Total matter fraction \\
+\param{Ob0} & $\Omega_{\rm b}$ & 0.049 & Baryon fraction \\
+\param{sigma8} & $\sigma_8$ & 0.81 & RMS mass fluctuation at $8\,h^{-1}$Mpc \\
+\param{ns} & $n_s$ & 0.95 & Scalar spectral index \\
+\param{w0} & $w_0$ & $-1.0$ & Dark energy equation of state \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The code uses \code{jax\_cosmo.Cosmology} with
+$\Omega_c = \Omega_{\rm m} - \Omega_{\rm b}$, $\Omega_k=0$, $w_a=0$ (flat
+$w_0$CDM). The mean matter density at $z=0$ is
+\begin{equation}
+  \bar\rho_{\rm m}(z) = \Omega_{\rm m}\rho_{\rm crit,0}(1+z)^3,
+  \qquad \rho_{\rm crit,0} = 2.775\times10^{11}\,h^2\,M_\odot\,{\rm Mpc}^{-3}.
+\end{equation}
+
+\paragraph{Linear power spectrum (\file{helpers/jax\_cosmo\_power.py}: \code{linear\_matter\_power}).}
+\begin{equation}
+  P_{\rm lin}(k,z) = \frac{\sigma_8^2}{\sigma^2_{\rm EH}(8\,h^{-1}{\rm Mpc})}
+  \,k^{n_s}\,T^2_{\rm EH}(k)\,D^2(z),
+\end{equation}
+where $T_{\rm EH}(k)$ is the Eisenstein--Hu transfer function
+\citep{EisensteinHu1998} and $D(z)$ is the linear growth factor from
+\code{jax\_cosmo.background.growth\_factor}.
+\textbf{The transfer function is hardcoded as Eisenstein--Hu and cannot be changed
+without modifying source code.}
+
+\paragraph{Non-linear power spectrum: Halofit (\file{helpers/jax\_cosmo\_power.py}: \code{nonlinear\_matter\_power}).}
+\begin{equation}
+  P_{\rm HF}(k,z) = P_{\rm HF}^{\rm Q}(k,z) + P_{\rm HF}^{\rm H}(k,z),
+\end{equation}
+following the Takahashi et al.\ (2012) fitting formula \citep{Takahashi2012}.
+\textbf{The Takahashi 2012 prescription is hardcoded}; Smith 2003 code exists but is not
+the default path (\code{nonlinear\_matter\_power} always calls \code{halofit} with
+\code{prescription="takahashi2012"}).
+
+The stored matrix is \code{Pkz\_test.phfit\_kz\_mat} with shape
+\code{(nk, nz)}.
+
+\paragraph{Numerical grids (\file{base\_class.py}: \code{read\_all\_input}; set via \param{halo\_params\_dict}).}
+
+\begin{center}
+\begin{tabular}{lllll}
+\toprule
+Array & Attribute & Default range & Default $N$ & Description \\
+\midrule
+$k$ & \code{kPk\_array} & $[10^{-4},\,150]\,h/{\rm Mpc}$ & 48 & log-spaced \\
+$z$ & \code{z\_array} & $[0.01,\,1.6]$ & 22 & linear \\
+$M$ & \code{M\_array} & $[10^{11.5},\,10^{15.5}]\,h^{-1}M_\odot$ & 24 & log-spaced \\
+$r$ & \code{r\_array} & $[0.005,\,8]\,h^{-1}{\rm Mpc}$ & 23 & log-spaced \\
+$\ell$ & \code{ell\_array} & $[\ell_{\rm min},\,\ell_{\rm max}]$ & 30 & log-spaced \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%==============================================================================
+\section{Halo Model: Mass Function, Concentration, Profiles}
+\label{sec:halomodel}
+%==============================================================================
+
+\subsection{Halo Mass Function}
+\label{sec:hmf}
+
+\paragraph{Implementation (\file{get\_radial\_profiles.py}: \code{setup\_hmf}, \code{get\_hmf}).}
+The halo mass function (HMF) is
+\begin{equation}
+  \frac{dn}{d\ln M} = -f(\sigma)\,\frac{\bar\rho_{\rm m}}{M}\,
+  \frac{d\ln\sigma}{d\ln M},
+\end{equation}
+stored as \code{hmf\_Mz\_mat} with shape \code{(nz, nM)}.
+
+The mass variance is
+\begin{equation}
+  \sigma^2(M,z) = \frac{1}{2\pi^2}\int_0^\infty dk\,k^2\,
+  P_{\rm lin}(k,z)\,W^2(kR),
+  \qquad W(x) = \frac{3(\sin x - x\cos x)}{x^3},
+\end{equation}
+where $R = (3M/4\pi\bar\rho_{\rm m})^{1/3}$. Computed via
+\code{get\_sigma\_Mz}; derivative via JAX autodiff (\code{get\_lgsigma\_z}).
+
+\paragraph{Model choice (\param{halo\_params\_dict['hmf\_model']}: \code{`T08'} or \code{`T10'}).}
+
+\textbf{Tinker 2008} \citep{Tinker2008} (\code{get\_fsigma\_Mz\_T08}):
+\begin{equation}
+  f(\sigma) = A\left[\left(\frac{\sigma}{b}\right)^{-a}+1\right]
+  e^{-c/\sigma^2},
+\end{equation}
+with redshift-dependent coefficients $(A,a,b,c)$ interpolated over
+$\Delta_{\rm m}\in[200,3200]$.
+
+\textbf{Tinker 2010} \citep{Tinker2010} (\code{get\_fsigma\_Mz\_T10}, default in
+\file{params\_default.yaml}):
+\begin{equation}
+  f(\nu) = \nu\,\alpha\left[1+(\beta\nu)^{-2\phi}\right]\nu^{2\eta}
+  e^{-\gamma\nu^2/2},
+\end{equation}
+with $\nu=\delta_c/\sigma$, $\delta_c=1.686$, and
+$(\alpha,\beta,\gamma,\phi,\eta)$ interpolated over $\Delta_{\rm m}$; redshift
+evolution as $\beta\propto(1+z)^{0.2}$, $\phi\propto(1+z)^{-0.08}$,
+$\eta\propto(1+z)^{0.27}$, $\gamma\propto(1+z)^{-0.01}$.
+
+The mass definition is $M_{\rm 200c}$ (200 times the critical density) set via
+\param{halo\_params\_dict['mdef\_Delta']} (default 200).
+
+\subsection{Concentration--Mass Relation}
+\label{sec:conc}
+
+\paragraph{Model choice (\param{halo\_params\_dict['conc\_model']}).}
+Three options in \code{get\_conc\_Mz} (stored as \code{conc\_Mz\_mat}):
+
+\textbf{Duffy 2008} \citep{Duffy2008} (default, \code{get\_conc\_Mz\_Duffy08}):
+\begin{equation}
+  c_{200c}(M,z) = 5.71\left(\frac{M}{2\times10^{12}\,h^{-1}M_\odot}\right)^{-0.084}
+  (1+z)^{-0.47}.
+\end{equation}
+
+\textbf{Prada 2012} \citep{Prada2012} (\code{get\_conc\_Mz\_Prada12}):
+Uses fitting functions $c_{\rm min}(x)$ and $s_{\rm min}(x)$ with
+$x\propto[(1-\Omega_{\rm m})/\Omega_{\rm m}]^{1/3}a$.
+
+\textbf{Diemer 2015} \citep{Diemer2015} (\code{get\_conc\_Mz\_Diemer15}):
+$c = 0.5\,c_{\rm floor}\left[(\nu_0/\nu)^\alpha + (\nu/\nu_0)^\beta\right]$
+with $c_{\rm floor}$ and $\nu_0$ depending on the local slope $n_{\rm eff}$ of
+$P_{\rm lin}$.
+
+\subsection{NFW Dark-Matter-Only Profile}
+\label{sec:nfw}
+
+\paragraph{Implementation (\file{get\_radial\_profiles.py}: \code{get\_rho\_nfw\_unnorm}).}
+\begin{equation}
+  \rho_{\rm NFW}(r) = \frac{\rho_0}{x(1+x)^2}
+  \times
+  \begin{cases}
+    (1+y^2)^{-2} & \text{if \param{nfw\_trunc}=True} \\
+    1            & \text{otherwise}
+  \end{cases},
+\end{equation}
+where $x=r/r_s$, $r_s=r_{200c}/c$, $y=r/r_t$, $r_t = \epsilon_{\rm rt}\,r_{200c}$
+(\param{sim\_params\_dict['epsilon\_rt']}, default 4.0).
+The amplitude $\rho_0$ is fixed by $\int_0^{r_{200c}}\rho_{\rm NFW}4\pi r^2 dr = M_{200c}$
+(\code{get\_nfw\_norm}). The stored matrix is \code{rho\_nfw\_mat} with shape
+\code{(nr, nz, nM)}.
+
+$r_{200c}$ is in comoving coordinates: \code{get\_M\_to\_R} solves
+$(4\pi/3)r_{200c}^3/(1+z)^3 = M_{200c}/(200\,\rho_c(z))$.
+
+%==============================================================================
+\section{Probe G: Galaxy Angular Power Spectrum}
+\label{sec:probeG}
+%==============================================================================
+
+\subsection{Baryonic Galaxy Model (HOD)}
+\label{sec:hod}
+
+\paragraph{Overview.}
+When \param{analysis\_dict['model\_galaxies']=True}, galaxies are modelled via a
+halo occupation distribution (HOD) following \cite{Leauthaud2011}. The
+stellar-to-halo mass relation (SHMR) maps halo mass to central galaxy stellar
+mass using the functional form of \cite{Behroozi2010}
+(arXiv:0912.3915, \url{https://doi.org/10.1088/0004-637X/717/1/379}).
+
+\paragraph{Stellar-to-halo mass relation (\code{get\_Mh\_Mstar}).}
+\label{par:shmr}
+
+This is the \emph{inverse} SHMR: given stellar mass $M_\star$, what halo mass
+$M_h$ hosts it?
+\begin{equation}
+  \label{eq:shmr}
+  \log_{10}M_h = \log_{10}M_1
+  + \beta\log_{10}\!\left(\frac{M_\star}{M_{\star,0}}\right)
+  + \frac{(M_\star/M_{\star,0})^\delta}{1+(M_\star/M_{\star,0})^{-\gamma}} - \frac{1}{2}.
+\end{equation}
+
+\textbf{Derivation and physical motivation.}
+The form is chosen to reproduce the \emph{double power-law} shape of the
+stellar-mass function (SMF) seen in SDSS data \citep{Behroozi2010}.
+Consider the two mass regimes:
+
+\begin{itemize}
+  \item \textbf{Sub-pivot} ($M_\star \ll M_{\star,0}$):
+    $(M_\star/M_{\star,0})^{-\gamma}\gg 1$, so the second term vanishes,
+    leaving
+    \[
+      \log_{10}M_h \approx \log_{10}M_1 + \beta\log_{10}\!\left(\frac{M_\star}{M_{\star,0}}\right) - \tfrac{1}{2},
+    \]
+    a power law $M_h\propto M_\star^\beta$ with slope $\beta\approx 0.44$.
+    Reflects inefficient star formation in low-mass halos.
+
+  \item \textbf{Super-pivot} ($M_\star \gg M_{\star,0}$):
+    $(M_\star/M_{\star,0})^{-\gamma}\to 0$, so the second term becomes
+    $(M_\star/M_{\star,0})^\delta$, giving
+    \[
+      \log_{10}M_h \approx \log_{10}M_1
+      + (\beta+\delta)\log_{10}\!\left(\frac{M_\star}{M_{\star,0}}\right) - \tfrac{1}{2},
+    \]
+    a steeper slope $\beta+\delta\approx 1.01$. Reflects AGN-quenched, gas-poor
+    massive galaxies.
+
+  \item \textbf{Pivot} ($M_\star = M_{\star,0}$):
+    Second term equals $1/(1+1)=0.5$.
+    Eq.~\eqref{eq:shmr} then gives $\log_{10}M_h = \log_{10}M_1$, so
+    $(M_1, M_{\star,0})$ is the characteristic halo--stellar mass pair at
+    the ``knee'' of the SMF. The $-1/2$ offset ensures this exact pivot
+    condition.
+
+  \item $\gamma$ controls the \textbf{sharpness of the transition} between
+    the two power laws; larger $\gamma$ gives a sharper knee.
+\end{itemize}
+
+\textbf{Unit note.}
+The SHMR was calibrated by \cite{Behroozi2010} in $M_\odot$ (no $h$). GODMAX
+works in $h^{-1}M_\odot$, so masses are stripped of $h$ before evaluation:
+\code{Mval\_no\_h = Mval / self.h}, and stellar mass is restored with
+\code{Mstar\_wh = Mstar\_Mh * self.h} after inversion.
+
+\textbf{Redshift evolution (GODMAX extension).}
+All five parameters evolve linearly with scale factor $a=1/(1+z)$:
+\begin{align}
+  \log_{10}M_1(a)        &= \param{log10M1\_fshmr} + \param{log10M1\_a\_fshmr}\,(a-1), \\
+  \log_{10}M_{\star,0}(a) &= \param{log10Mstar0\_fshmr} + \param{log10Mstar0\_a\_fshmr}\,(a-1), \\
+  \beta(a)  &= \param{beta\_fshmr}  + \param{beta\_a\_fshmr}\,(a-1), \\
+  \delta(a) &= \param{delta\_fshmr} + \param{delta\_a\_fshmr}\,(a-1), \\
+  \gamma(a) &= \param{gamma\_fshmr} + \param{gamma\_a\_fshmr}\,(a-1).
+\end{align}
+At $a=1$ ($z=0$) these recover the static Behroozi+2010 form. Setting all
+\param{*\_a\_fshmr} parameters to zero disables redshift evolution.
+
+Default values (from \file{params\_default.yaml}):
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Parameter & Symbol & Default & Description \\
+\midrule
+\param{log10M1\_fshmr}       & $\log_{10}M_1$        & 12.35 & Pivot halo mass [$h^{-1}M_\odot$] \\
+\param{log10Mstar0\_fshmr}   & $\log_{10}M_{\star,0}$& 10.72 & Pivot stellar mass [$h^{-1}M_\odot$] \\
+\param{beta\_fshmr}          & $\beta$               & 0.44  & Low-mass slope \\
+\param{delta\_fshmr}         & $\delta$              & 0.57  & High-mass slope increment \\
+\param{gamma\_fshmr}         & $\gamma$              & 1.56  & Transition sharpness \\
+\param{siglogMstar\_Ncen}    & $\sigma_{\log M_\star}$& 0.25 & Scatter in $N_{\rm cen}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{HOD: central galaxy number (\code{get\_Ncen}).}
+\begin{equation}
+  \langle N_{\rm cen}\rangle(M|M_{\rm thresh}) =
+  \frac{1}{2}\left[1 - {\rm erf}\!\left(\frac{\log_{10}M_{\rm thresh}-\log_{10}M_\star(M)}
+  {\sqrt{2}\,\sigma_{\log M_\star}}\right)\right],
+\end{equation}
+where $M_\star(M)$ is obtained by inverting the SHMR, and
+$\sigma_{\log M_\star}=\param{siglogMstar\_Ncen}$ (default 0.25).
+
+\paragraph{HOD: satellite galaxy number (\code{get\_Nsat}).}
+\begin{equation}
+  \langle N_{\rm sat}\rangle(M|M_{\rm thresh}) =
+  \langle N_{\rm cen}\rangle(M|M_{\rm thresh})\,
+  \left(\frac{M}{M_{\rm sat}}\right)^{\alpha_{\rm sat}}
+  \exp\!\left(-\frac{M_{\rm cut}}{M}\right),
+\end{equation}
+with
+\begin{align}
+  M_{\rm sat} &= 10^{12}h\,B_{\rm sat}\!\left(\frac{M_{h,\rm thresh}}{10^{12}}\right)^{\beta_{\rm sat}}, \\
+  M_{\rm cut} &= 10^{12}h\,B_{\rm cut}\!\left(\frac{M_{h,\rm thresh}}{10^{12}}\right)^{\beta_{\rm cut}}.
+\end{align}
+Parameters: \param{alphasat\_Nsat}$=1.0$, \param{Bsat\_Nsat}$=9.01$,
+\param{betasat\_Nsat}$=0.74$, \param{Bcut\_Nsat}$=1.69$,
+\param{betacut\_Nsat}$=0.6$.
+
+\paragraph{Threshold mass (\code{get\_Mthresh}).}
+$M_{\rm thresh}(z)$ is determined by matching the observed comoving galaxy
+number density:
+\begin{equation}
+  \bar n_{\rm gal}(z) = \int_{M_{\rm thresh}}^\infty
+  \bigl[\langle N_{\rm cen}\rangle+\langle N_{\rm sat}\rangle\bigr]\,
+  \frac{dn}{d\ln M}\,d\ln M.
+\end{equation}
+The input \param{analysis\_dict['nbar\_gal\_comoving\_val']} provides
+$\bar n_{\rm gal}(z)$ in comoving $(h^{-1}{\rm Mpc})^{-3}$.
+\textbf{This is a key observable input}: it sets the amplitude of galaxy bias through the HOD.
+
+\subsection{How \texorpdfstring{$\bar{n}_{\rm gal}$}{nbar\_gal} Sets the Galaxy Bias}
+\label{sec:nbar_bias}
+
+The comoving galaxy number density $\bar{n}_{\rm gal}(z)$ is the \emph{only}
+observable that anchors the HOD and thereby determines the effective galaxy bias.
+There is no free bias parameter; bias is an emergent output.
+The mechanism proceeds through four steps.
+
+\paragraph{Step 1: abundance matching sets $M_{\rm thresh}(z)$ (\code{get\_Mthresh}).}
+For each redshift bin, GODMAX finds the stellar mass threshold $M_{\rm thresh}$
+such that the predicted comoving galaxy number density matches the input:
+\begin{equation}
+  \bar{n}_{\rm gal}(z) \stackrel{!}{=}
+  \int_{M_{\rm min}}^{M_{\rm max}}
+  \bigl[\langle N_{\rm cen}\rangle(M|M_{\rm thresh})
+  + \langle N_{\rm sat}\rangle(M|M_{\rm thresh})\bigr]\,
+  \frac{dn}{d\ln M}\,d\ln M.
+\end{equation}
+Solved by root-finding over a grid $M_{\rm thresh}\in[10^9, 10^{14}]\,h^{-1}M_\odot$.
+
+\paragraph{Step 2: $M_{\rm thresh}$ selects the populated halo mass range.}
+Once $M_{\rm thresh}$ is fixed, $N_{\rm cen}$ and $N_{\rm sat}$ are determined
+everywhere in $(M,z)$. Halos much lighter than the corresponding halo mass
+$M_h(M_{\rm thresh})$ contribute negligible occupation number.
+
+\paragraph{Step 3: HOD-weighted Tinker bias (\code{get\_b\_2h}, probe 2).}
+In the large-scale ($k\to 0$) limit, $\tilde{u}_{\rm clm}\to 1$, so
+$\tilde{u}_g^{\rm cross}\to(N_{\rm cen}+N_{\rm sat})/\bar{n}_{\rm gal}$, and the
+effective galaxy bias reduces to
+\begin{equation}
+  \boxed{b_g^{\rm eff}(z) = \frac{1}{\bar{n}_{\rm gal}(z)}
+  \int \bigl[\langle N_{\rm cen}\rangle + \langle N_{\rm sat}\rangle\bigr]\,
+  \frac{dn}{d\ln M}\,b_{\rm T10}(M,z)\,d\ln M,}
+\end{equation}
+a number-weighted mean of the Tinker (2010) bias over the HOD-selected halo
+population. No bias polynomial is fitted; $b_g^{\rm eff}$ is fully determined by
+$\bar{n}_{\rm gal}$ and the SHMR/HOD shape parameters.
+
+\paragraph{Step 4: direction of the effect.}
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+$\bar{n}_{\rm gal}$ & $\to$ & $M_{\rm thresh}$ & $\to$ dominant halo mass & $\to$ $b_g^{\rm eff}$ \\
+\midrule
+high & & low & many low-$M$ halos & low \\
+low  & & high & rare high-$M$ halos & high \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Practical consequence.}
+To match a target $b_g^{\rm eff}(z)$ without changing the SHMR shape, tune
+\param{nbar\_gal\_comoving\_val} (lowers/raises $M_{\rm thresh}$).
+Alternatively, shifting the SHMR amplitude parameters
+(\param{log10M1\_fshmr}, \param{log10Mstar0\_fshmr}) rescales $M_h(M_{\rm thresh})$
+and therefore shifts $b_g^{\rm eff}$ at fixed $\bar{n}_{\rm gal}$.
+
+\paragraph{Stellar fraction.}
+\begin{align}
+  f_{\rm star,tot}(M,z) &= f_{\rm cen}(M,z) + f_{\rm sat}(M,z), \\
+  f_{\rm gas}(M,z) &= \frac{\Omega_b}{\Omega_m} - f_{\rm star,tot}, \\
+  f_{\rm clm}(M,z) &= 1 - \frac{\Omega_b}{\Omega_m} + f_{\rm star,sat},
+\end{align}
+where $f_{\rm clm}$ is the collision-less matter (dark matter + satellite stars) fraction.
+
+\subsection{Baryonic Correction Model (BCM)}
+\label{sec:bcm}
+
+The BCM partitions each halo into components following
+\cite{Schneider2015,Schneider2019}. The total matter density is
+(\code{get\_rho\_dmb}):
+\begin{equation}
+  \rho_{\rm dmb}(r) = \rho_{\rm gas}(r) + \rho_{\rm cga}(r) + \rho_{\rm clm}(r),
+\end{equation}
+stored as \code{rho\_dmb\_mat} with shape \code{(nr, nz, nM)}.
+
+\subsubsection{Gas Profile (\code{get\_rho\_gas\_unnorm})}
+\begin{equation}
+  \rho_{\rm gas}(r) \propto
+  \frac{1}{\left(1+u\right)^{\beta(M,z)}
+  \left(1+v^{\gamma_\rho}\right)^{(\delta_\rho-\beta)/\gamma_\rho}},
+  \qquad u = \frac{r}{r_{\rm co}},\quad v = \frac{r}{r_{\rm ej}}.
+\end{equation}
+Normalised so that $\int_0^\infty \rho_{\rm gas}\,4\pi r^2\,dr = f_{\rm gas}(M,z)\,M_{\rm tot}$
+(\code{get\_rho\_gas\_norm}, integrates to $16\,r_{200c}$).
+
+\paragraph{Outer slope parameter $\beta(M,z)$ (\code{get\_beta}).}
+\begin{equation}
+  \beta(M,z) = \frac{3\,(M/M_c)^{\mu_\beta}}{1+(M/M_c)^{\mu_\beta}},
+  \qquad M_c(M,z) = M_{c,0}\left(\frac{M}{M_{\star,0}}\right)^{\nu_M}(1+z)^{\nu_z}.
+\end{equation}
+Parameters: \param{mu\_beta}$=0.6$, \param{log10\_Mc0}$=14.83$, \param{log10\_Mstar0}$=14.0$,
+\param{nu\_M}$=0.0$, \param{nu\_z}$=0.0$.
+Fixed inner/outer slopes: \param{gamma\_rhogas}$=2.0$, \param{delta\_rhogas}$=7.0$.
+
+\paragraph{Ejection radius $r_{\rm ej}$ (\code{get\_theta\_ej}).}
+\begin{equation}
+  r_{\rm ej}(M,z) = \theta_{\rm ej,0}
+  \left(\frac{M}{M_{\star,\rm ej}}\right)^{\nu_{\rm ej,M}}
+  (1+z)^{\nu_{\rm ej,z}}\,r_{200c}.
+\end{equation}
+Parameters: \param{theta\_ej\_0}, \param{log10\_Mstar0\_theta\_ej},
+\param{nu\_theta\_ej\_M}, \param{nu\_theta\_ej\_z}.
+
+\paragraph{Core radius $r_{\rm co}$ (\code{get\_theta\_co}).}
+\begin{equation}
+  r_{\rm co}(M,z) = \theta_{\rm co,0}
+  \left(\frac{M}{M_{\star,\rm co}}\right)^{\nu_{\rm co,M}}
+  (1+z)^{\nu_{\rm co,z}}\,r_{200c}.
+\end{equation}
+Parameters: \param{theta\_co\_0}, \param{log10\_Mstar0\_theta\_co},
+\param{nu\_theta\_co\_M}, \param{nu\_theta\_co\_z}.
+
+\subsubsection{Central Galaxy Profile (\code{get\_rho\_cga})}
+A Gaussian profile (half-Gaussian in $r$):
+\begin{equation}
+  \rho_{\rm cga}(r) = \frac{f_{\rm cen}\,M_{\rm tot}}{4\pi^{3/2}\,R_h\,r^2}
+  \exp\!\left[-\frac{1}{2}\!\left(\frac{r}{R_h}\right)^2\right],
+  \qquad R_h = 0.015\,r_{200c}.
+\end{equation}
+(\textbf{Fixed}: the constant 0.015 and the Gaussian form are hardcoded.)
+
+\subsubsection{Collision-less Matter: Backreaction (\code{get\_zeta}, \code{get\_rho\_clm})}
+
+When \param{analysis\_dict['backreaction']=True} (default), the CLM profile
+is computed via the backreaction equation of \cite{Schneider2019}. For each
+shell at radius $r_i$, the expanded radius $r_f = \zeta\,r_i$ satisfies:
+\begin{equation}
+  \zeta - 1 = a_\zeta\left[\left(\frac{M_{\rm NFW}(r_i)}{M_f(r_f)}\right)^{n_\zeta} - 1\right],
+\end{equation}
+where $M_f = f_{\rm clm}\,M_{\rm NFW}(r_i) + M_{\rm cga}(r_f) + M_{\rm gas}(r_f)$.
+Parameters: \param{a\_zeta}$=0.3$, \param{n\_zeta}$=2.0$.
+
+The CLM mass profile is then
+$M_{\rm clm}(r) = f_{\rm clm}\,M_{\rm NFW}(r/\zeta(r))$,
+and the density $\rho_{\rm clm}(r) = \frac{1}{4\pi r^2}\frac{dM_{\rm clm}}{dr}$
+(\code{get\_rho\_clm}).
+
+Without backreaction: $\rho_{\rm clm} = f_{\rm clm}\,\rho_{\rm NFW}$.
+
+\subsection{Fourier Profiles}
+\label{sec:fourier}
+
+Real-space profiles are transformed to Fourier space via FFTLog
+(\code{mcfitjax.xi2P}), then interpolated onto \code{kPk\_array}
+(\code{get\_uk\_from\_interp\_Pk}).
+
+\paragraph{Galaxy HOD Fourier profile (\file{get\_Pkzs.py}).}
+The cross-power kernel (for $P^{2h}$ and $P^{1h}_{\rm cross}$):
+\begin{equation}
+  \tilde u_g^{\rm cross}(k,z,M) =
+  \frac{\langle N_{\rm cen}\rangle + \langle N_{\rm sat}\rangle\,\tilde u_{\rm clm}(k,z,M)}
+  {\bar n_{\rm gal}(z)}.
+\end{equation}
+The auto-power HOD kernel (for $P^{1h}_{gg}$):
+\begin{equation}
+  \left|\tilde u_g^{\rm auto}\right|^2(k,z,M) =
+  \frac{2\langle N_{\rm cen}\rangle\langle N_{\rm sat}\rangle\,\tilde u_{\rm clm}
+  + \langle N_{\rm sat}\rangle^2\,\tilde u_{\rm clm}^2}{\bar n_{\rm gal}^2(z)}.
+\end{equation}
+Here $\tilde u_{\rm clm}$ is the normalised Fourier transform of the CLM profile,
+stored as \code{uk\_clm}.
+
+\subsection{Halo Model Power Spectra}
+\label{sec:Pgg}
+
+\subsubsection{Tinker 2010 Linear Bias (\code{get\_bias\_Mz})}
+\begin{equation}
+  b(M,z) = 1 - \frac{A\nu^a}{\nu^a+\delta_c^a} + B\nu^b + C\nu^c,
+\end{equation}
+with $\nu=\delta_c/\sigma(M,z)$, $\delta_c=1.686$, and
+\begin{align}
+  A &= 1+0.24\,y\,e^{-(4/y)^4}, &\quad a &= 0.44\,y - 0.88, \\
+  B &= 0.183, &\quad b &= 1.5, \\
+  C &= 0.019+0.107\,y+0.19\,e^{-(4/y)^4}, &\quad c &= 2.4,
+\end{align}
+where $y=\log_{10}(\Delta)$, $\Delta=\Delta_m(z)=200\,\rho_c(z)/\bar\rho_m(z)$.
+\citep{Tinker2010}.
+\textbf{This bias model is hardcoded; no flag exists to switch it.}
+
+\subsubsection{Effective 2-halo Bias (\code{get\_b\_2h})}
+\begin{equation}
+  b_X^{\rm eff}(k,z) = \int \tilde u_X(k,z,M)\,\frac{dn}{d\ln M}\,b(M,z)\,d\ln M.
+\end{equation}
+Probe codes: 0=DMB matter, 1=NFW, 2=galaxies, 3=tSZ, 4=electron density.
+For galaxies ($X=g$), $\tilde u_g = \tilde u_g^{\rm cross}$ (defined above).
+Stored as \code{bg\_kz\_mat} with shape \code{(nk, nz)}.
+
+\paragraph{Large-scale correction (\param{do\_corr\_2h\_mm}).}
+When \param{halo\_params\_dict['do\_corr\_2h\_mm']=True} (default), the
+matter bias is corrected for mass below $M_{\rm min}$:
+\begin{equation}
+  b_m^{\rm eff}(k,z) = \int \tilde u_m(k,z,M)\,\frac{dn}{d\ln M}\,b(M,z)\,d\ln M
+  + \left[1 - \int \frac{M}{\bar\rho_m}\,\frac{dn}{d\ln M}\,b(M,z)\,d\ln M\right].
+\end{equation}
+The correction term (stored as \code{bm\_largescales\_2h\_mat\_lt\_Mmin}) ensures
+$b_m^{\rm eff}\to 1$ on large scales.
+
+\subsubsection{1-halo Power (\code{get\_P\_1h})}
+\begin{equation}
+  P^{1h}_{XY}(k,z) = \int \left|\tilde u_X \tilde u_Y\right|\,\frac{dn}{d\ln M}\,d\ln M,
+\end{equation}
+with the special galaxy auto-term using $|\tilde u_g^{\rm auto}|^2$ instead of
+$|\tilde u_g^{\rm cross}|^2$. Stored as \code{Pgg\_1h\_kz\_mat}, shape \code{(nk, nz)}.
+
+\subsubsection{2-halo Power}
+\begin{equation}
+  P^{2h}_{XY}(k,z) = b_X^{\rm eff}(k,z)\,b_Y^{\rm eff}(k,z)\,P_{\rm lin}(k,z).
+\end{equation}
+Stored as \code{Pgg\_2h\_kz\_mat}, shape \code{(nk, nz)}.
+
+\subsubsection{Halofit Suppression Factor}
+The halo-model-to-halofit ratio is used to calibrate the total power:
+\begin{equation}
+  \mathcal{S}(k,z) = \frac{P_{\rm HF}(k,z)}{P^{1h}_{mm,\rm NFW}(k,z)+P^{2h}_{mm,\rm NFW}(k,z)}.
+\end{equation}
+Stored as \code{Pmm\_sup\_tot\_mat}. This is applied to all cross-probes involving
+a matter field, ensuring the matter power is anchored to halofit.
+
+\subsubsection{Total Galaxy Power Spectrum}
+\begin{equation}
+  \boxed{P^{\rm tot}_{gg}(k,z) = \left[P^{1h}_{gg}(k,z) + P^{2h}_{gg}(k,z)\right]\mathcal{S}(k,z).}
+\end{equation}
+Stored as \code{Pgg\_tot\_mat}, shape \code{(nk, nz)}.
+
+\subsection{Limber Integration for $C_\ell^{gg}$}
+\label{sec:Clgg}
+
+\paragraph{Galaxy kernel (\file{get\_Cls.py}: \code{get\_nz\_lens\_interp}).}
+\begin{equation}
+  W_g^{(b)}(z) = \frac{n^{(b)}(z)}{\int n^{(b)}(z')\,dz'},
+\end{equation}
+stored as \code{Wg\_mat}, shape \code{(nbins\_lens, nz\_for\_Cls)}.
+The n(z) is provided via \param{analysis\_dict['nz\_lens\_info\_dict']} as
+normalised probability distributions.
+
+\paragraph{Angular power spectrum (\code{get\_Cl\_tot} with probes 2,2).}
+Using the Limber approximation \citep{Limber1953} with $k = (\ell+0.5)/\chi$:
+\begin{equation}
+  \boxed{C_\ell^{gg,\,(b_1 b_2)} = \int_0^{z_{\rm max}}
+  \frac{W_g^{(b_1)}(z)\,W_g^{(b_2)}(z)}{\chi^2(z)}
+  \,P^{\rm tot}_{gg}\!\left(\frac{\ell+0.5}{\chi(z)},z\right)\,\frac{d\chi}{dz}\,dz.}
+\end{equation}
+Stored as \code{Cl\_gal\_gal\_tot\_mat}, shape \code{(nell, nbins\_lens, nbins\_lens)}.
+
+$P_{gg}$ is interpolated in 2D $(\ell, z)$ using \code{interpax.Interpolator2D}
+(bilinear in log-space); result cached in \code{cached\_power\_spectra[2,2]}.
+Integration is via \code{jax.scipy.integrate.trapezoid} on
+\code{z\_array\_for\_Cls} (128 points, $z\in[0.01,1.6]$).
+
+%==============================================================================
+\section{Probe y: Thermal Sunyaev--Zel'dovich Effect}
+\label{sec:probey}
+%==============================================================================
+
+When \param{analysis\_dict['model\_tSZ']=True}.
+
+\subsection{Pressure Profile}
+\label{sec:pressure}
+
+\subsubsection{Total Pressure: Hydrostatic Equilibrium (\code{get\_Ptot})}
+\begin{equation}
+  P_{\rm tot}(r) = \int_r^{r_{\rm max}} \rho_{\rm gas}(r')\,
+  \frac{G\,M_{\rm dmb}(<r')}{r'^2}\,dr',
+  \qquad r_{\rm max} = 6\,r_{200c}.
+\end{equation}
+This integrates outward assuming HSE.
+\textbf{The GNFW profile is not used}; GODMAX solves HSE self-consistently from the
+BCM gas and total matter profiles. $M_{\rm dmb}(<r)$ is stored in \code{Mdmb\_mat}.
+A factor of $h^2$ is applied to restore correct units.
+
+\subsubsection{Non-thermal Pressure (\code{get\_Pnt\_fac})}
+\begin{equation}
+  f_{\rm nt}(r,z) = \alpha_{\rm nt}\,f_z(z)\,
+  \left(\frac{r}{r_{200c}}\right)^{n_{\rm nt}},
+\end{equation}
+with
+\begin{equation}
+  f_z(z) = \min\!\left[(1+z)^{\beta_{\rm nt}},\;
+  \left(\frac{f_{\rm max}-1}{\tanh(\beta_{\rm nt}\,z)}\right)^{-1}\cdot f_{\rm max}\right],
+  \quad f_{\rm max} = \frac{6^{-n_{\rm nt}}}{\alpha_{\rm nt}}.
+\end{equation}
+Parameters: \param{alpha\_nt}$=0.18$, \param{beta\_nt}$=0.5$, \param{n\_nt}$=0.3$.
+
+\subsubsection{Electron Pressure and Compton-$y$ (\code{run\_pressure\_calc})}
+\begin{align}
+  P_{\rm th}(r) &= P_{\rm tot}(r)\,(1 - f_{\rm nt}(r)), \\
+  P_e(r) &= P_{\rm th}(r) / 1.932, \\
+  y_{\rm 3d}(r) &= \frac{\sigma_T}{m_e c^2}\,P_e(r)\,\frac{{\rm Mpc}}{h},
+\end{align}
+where $\sigma_T=6.6524\times10^{-25}\,{\rm cm}^2$, $m_ec^2=511\,{\rm keV}$.
+The factor of 1.932 converts from total to electron pressure assuming a fully
+ionised plasma with helium. Stored as \code{y3d\_mat}, shape \code{(nr, nz, nM)}.
+
+\subsection{Halo Model $P_{ym}$ and $P_{yy}$}
+
+\paragraph{Fourier transform.}
+The 3D Compton-$y$ profile $y_{\rm 3d}(r)$ is transformed via FFTLog
+(not normalised, unlike matter profiles) giving \code{uk\_y}, shape
+\code{(nk, nz, nM)}.
+
+\paragraph{1-halo.}
+\begin{equation}
+  P^{1h}_{ym}(k,z) = \int \tilde u_m(k,z,M)\,\tilde u_y(k,z,M)\,
+  \frac{dn}{d\ln M}\,d\ln M.
+\end{equation}
+
+\paragraph{2-halo.}
+\begin{equation}
+  P^{2h}_{ym}(k,z) = b_m^{\rm eff}(k,z)\,b_y^{\rm eff}(k,z)\,P_{\rm lin}(k,z).
+\end{equation}
+
+\paragraph{1h--2h transition (\param{analysis\_dict['tSZ\_transition\_model']}).}
+
+\textbf{poweradd} (default):
+\begin{equation}
+  \boxed{P^{\rm tot}_{ym}(k,z) =
+  \left[\left(P^{1h}_{ym}\right)^{\alpha_{ky}} +
+  \left(P^{2h}_{ym}\right)^{\alpha_{ky}}\right]^{1/\alpha_{ky}},}
+\end{equation}
+with \param{other\_params\_dict['alpha\_ky']} (default 1.0, i.e.\ simple sum).
+
+\textbf{response}: additionally multiplies by $\mathcal{S}(k,z)$.
+
+Similarly for $P_{yy}$:
+\begin{align}
+  P^{1h}_{yy}(k,z) &= \int |\tilde u_y|^2\,\frac{dn}{d\ln M}\,d\ln M, \\
+  P^{2h}_{yy}(k,z) &= |b_y^{\rm eff}|^2\,P_{\rm lin}(k,z), \\
+  P^{\rm tot}_{yy}(k,z) &= P^{1h}_{yy} + P^{2h}_{yy}.
+\end{align}
+Stored as \code{Pyy\_1h\_kz\_mat}, \code{Pyy\_2h\_kz\_mat}, \code{Pyy\_tot\_kz\_mat}.
+
+\subsection{Limber Integration for $C_\ell^{gy}$ and $C_\ell^{yy}$}
+\label{sec:Cly}
+
+\paragraph{tSZ kernel.}
+\begin{equation}
+  W_y(z) = \frac{1}{1+z},
+\end{equation}
+stored as \code{Wy\_array}, shape \code{(nz\_for\_Cls,)}.
+
+\paragraph{Beam suppression.}
+A Gaussian beam with FWHM $\theta_{\rm beam}$ (set by
+\param{analysis\_dict['beam\_fwhm\_arcmin']}, default 1.6 arcmin):
+\begin{equation}
+  B(\ell) = \exp\!\left[-\frac{\ell(\ell+1)\sigma_{\rm beam}^2}{2}\right],
+  \qquad \sigma_{\rm beam} = \frac{\theta_{\rm beam}}{60}\,\frac{\pi}{180}\,
+  \frac{1}{\sqrt{8\ln 2}}.
+\end{equation}
+Applied as $B(\ell)$ to $P_{ym}$ and $B^2(\ell)$ to $P_{yy}$ before caching.
+
+\paragraph{$C_\ell^{gy}$ (\code{get\_Cl\_tot} with probes 2,3).}
+\begin{equation}
+  \boxed{C_\ell^{gy,\,(b)} = \int
+  \frac{W_g^{(b)}(z)}{\chi^2}
+  \,\frac{W_y(z)}{\chi^2}
+  \,\chi^2\,\frac{d\chi}{dz}\,
+  P^{\rm tot}_{gy}\!\left(\frac{\ell+0.5}{\chi},z\right)B(\ell)\,dz,}
+\end{equation}
+stored as \code{Cl\_gal\_y\_tot\_mat}, shape \code{(nell, nbins\_lens)}.
+
+\paragraph{$C_\ell^{yy}$ (\code{get\_Cl\_tot} with probes 3,3).}
+\begin{equation}
+  \boxed{C_\ell^{yy} = \int
+  \frac{W_y^2(z)}{\chi^2}
+  \,P^{\rm tot}_{yy}\!\left(\frac{\ell+0.5}{\chi},z\right)B^2(\ell)\,\frac{d\chi}{dz}\,dz.}
+\end{equation}
+Stored as \code{Cl\_y\_y\_signal\_mat}, shape \code{(nell,)}.
+Noise can be loaded from file:
+\begin{itemize}
+  \item \param{analysis\_dict['yy\_noise\_ell\_fname']}: noise spectrum file → \code{Cl\_y\_y\_noise\_mat}
+  \item \param{analysis\_dict['yy\_total\_ell\_fname']}: total spectrum file → \code{Cl\_y\_y\_tot\_mat}
+\end{itemize}
+If neither provided: \code{Cl\_y\_y\_tot\_mat = Cl\_y\_y\_signal\_mat}.
+
+%==============================================================================
+\section{Probe $\kappa$: Matter (Weak) Lensing Convergence}
+\label{sec:probek}
+%==============================================================================
+
+\subsection{Matter Power Spectrum}
+\label{sec:Pmm}
+
+The total matter power spectrum depends on
+\param{analysis\_dict['model\_matter']}:
+
+\paragraph{\code{'halofit'} (pure halofit):}
+\begin{equation}
+  P^{\rm tot}_{mm}(k,z) = P_{\rm HF}(k,z).
+\end{equation}
+
+\paragraph{\code{'DMB'} (baryonified, default):}
+\begin{equation}
+  \boxed{P^{\rm tot}_{mm}(k,z) = \left[P^{1h}_{mm,\rm dmb}(k,z) + P^{2h}_{mm,\rm dmb}(k,z)\right]\mathcal{S}(k,z),}
+\end{equation}
+where the DMB 1-halo and 2-halo terms use the baryonified matter profile
+\code{uk\_dmb} instead of the pure NFW. The suppression $\mathcal{S}$ still uses
+the NFW halo model to preserve normalization.
+Stored as \code{Pmm\_tot\_mat}.
+
+\subsection{Weak Lensing Kernel and IA}
+\label{sec:wl}
+
+\subsubsection{Lensing Kernel (\code{get\_weak\_lensing\_kernel})}
+\begin{equation}
+  W_\kappa^{(b)}(\chi) = \frac{3H_0^2\Omega_m}{2c^2}\,(1+z)\,\chi\,
+  \int_z^{z_{\rm max}} n^{(b)}(z')\,\frac{\chi'-\chi}{\chi'}\,dz',
+\end{equation}
+stored as \code{Wk\_gravonly\_mat}, shape \code{(nbins, nz\_for\_Cls)}.
+Source n(z) is provided via \param{analysis\_dict['nz\_source\_info\_dict']},
+with optional photo-$z$ shifts $\Delta z_b$ (\param{other\_params\_dict['Delta\_z\_bias\_array']}).
+
+\subsubsection{Intrinsic Alignment: NLA Model (\code{get\_nla\_kernel})}
+\begin{equation}
+  W_{\rm IA}^{(b)}(z) = -A_{\rm IA}\,C_1\bar\rho_m\,\frac{1}{D(z)}\,
+  \left(\frac{1+z}{1+z_0}\right)^{\eta_{\rm IA}}\,
+  \frac{n^{(b)}(z)}{d\chi/dz},
+\end{equation}
+where $C_1\bar\rho_m = \param{C1\_rhocrit}\times\Omega_m\,\rho_{\rm crit,0}$
+(non-linear alignment model of \citealt{Hirata2004,Bridle2007}).
+Parameters: \param{A\_IA}$=0.1$, \param{eta\_IA}$=0.1$, \param{z0\_IA}$=0.62$,
+\param{C1\_rhocrit}$=0.0134$.
+
+Total effective kernel:
+\begin{equation}
+  W^{(b)}(z) = (1+m_b)\,\left[W_\kappa^{(b)}(z) + W_{\rm IA}^{(b)}(z)\right] / \chi^2,
+\end{equation}
+where $m_b$ is the multiplicative shear bias (\param{mult\_shear\_bias\_array}).
+
+\subsection{Limber Integration for $C_\ell^{\kappa\kappa}$, $C_\ell^{\kappa y}$, $C_\ell^{g\kappa}$}
+\label{sec:Clkk}
+
+\paragraph{$C_\ell^{\kappa\kappa}$ (\code{get\_Cl\_tot} with probes 0,0).}
+\begin{equation}
+  \boxed{C_\ell^{\kappa\kappa,\,(b_1 b_2)} = \int
+  W^{(b_1)}(z)\,W^{(b_2)}(z)\,
+  \chi^2\,\frac{d\chi}{dz}\,
+  P^{\rm tot}_{mm}\!\left(\frac{\ell+0.5}{\chi},z\right)\,dz.}
+\end{equation}
+Stored as \code{Cl\_kappa\_kappa\_tot\_mat}, shape \code{(nell, nbins, nbins)}.
+
+\paragraph{$C_\ell^{\kappa y}$ (\code{get\_Cl\_tot} with probes 0,3).}
+\begin{equation}
+  \boxed{C_\ell^{\kappa y,\,(b)} = \int
+  W^{(b)}(z)\,\frac{W_y(z)}{\chi^2}\,
+  \chi^2\,\frac{d\chi}{dz}\,
+  P^{\rm tot}_{ym}\!\left(\frac{\ell+0.5}{\chi},z\right)B(\ell)\,dz.}
+\end{equation}
+Stored as \code{Cl\_kappa\_y\_tot\_mat}, shape \code{(nell, nbins)}.
+
+\paragraph{$C_\ell^{g\kappa}$ (\code{get\_Cl\_tot} with probes 2,0).}
+\begin{equation}
+  \boxed{C_\ell^{g\kappa,\,(b_1 b_2)} = \int
+  \frac{W_g^{(b_1)}(z)}{d\chi/dz\,\chi^2}\,
+  W^{(b_2)}(z)\,
+  \chi^2\,\frac{d\chi}{dz}\,
+  P^{\rm tot}_{gm}\!\left(\frac{\ell+0.5}{\chi},z\right)\,dz.}
+\end{equation}
+Stored as \code{Cl\_gal\_kappa\_tot\_mat}, shape \code{(nell, nbins\_lens, nbins)}.
+$P_{gm}$ uses the DMB matter profile (not NFW-only).
+
+%==============================================================================
+\section{Summary: What is Modifiable}
+\label{sec:modifiable}
+%==============================================================================
+
+\subsection{Fully Modifiable (YAML parameters)}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Category & Parameter(s) & Flag/key \\
+\midrule
+Cosmology & $H_0,\Omega_m,\Omega_b,\sigma_8,n_s,w_0$ & \param{sim\_params\_dict['cosmo']} \\
+HMF model & Tinker 2008 or 2010 & \param{halo\_params\_dict['hmf\_model']} \\
+Concentration & Duffy08 / Prada12 / Diemer15 & \param{halo\_params\_dict['conc\_model']} \\
+NFW truncation & on/off & \param{sim\_params\_dict['nfw\_trunc']} \\
+Truncation radius & $\epsilon_{\rm rt}$ & \param{sim\_params\_dict['epsilon\_rt']} \\
+Gas ejection & $\theta_{\rm ej,0}$, $\nu_{\rm ej,M}$, $\nu_{\rm ej,z}$ & \param{sim\_params} \\
+Gas core & $\theta_{\rm co,0}$, $\nu_{\rm co,M}$, $\nu_{\rm co,z}$ & \param{sim\_params} \\
+Outer gas slope & $\mu_\beta$, $M_{c,0}$, $M_{\star,0}$, $\nu_M$, $\nu_z$ & \param{sim\_params} \\
+Gas shape & $\gamma_\rho$, $\delta_\rho$ & \param{sim\_params} \\
+Backreaction & $a_\zeta$, $n_\zeta$, on/off & \param{sim\_params}/\param{analysis} \\
+Non-thermal pressure & $\alpha_{\rm nt}$, $\beta_{\rm nt}$, $n_{\rm nt}$ & \param{sim\_params} \\
+HOD & all SHMR and HOD parameters & \param{sim\_params} \\
+$n_{\rm gal}(z)$ & input comoving number density & \param{analysis\_dict} \\
+IA model & $A_{\rm IA}$, $\eta_{\rm IA}$, $z_0$, $C_1$ & \param{other\_params} \\
+Photo-$z$ bias & $\Delta z_b$ & \param{other\_params} \\
+Shear calibration & $m_b$ & \param{other\_params} \\
+tSZ transition & poweradd / response & \param{analysis\_dict['tSZ\_transition\_model']} \\
+1h--2h blend & $\alpha_{ky}$, $\alpha_{gy}$ & \param{other\_params} \\
+Matter model & DMB (full BCM) / halofit & \param{analysis\_dict['model\_matter']} \\
+Beam & $\theta_{\rm beam}$ [arcmin] & \param{analysis\_dict['beam\_fwhm\_arcmin']} \\
+Numerical grids & $n_k,n_z,n_M,n_r,\ell$ range & \param{halo\_params\_dict} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Modifiable by Patching Python Objects (No YAML Flag)}
+
+\begin{itemize}
+  \item \textbf{$P_{gg}$ with $b=1$}: Patch \code{Pkz\_test.Pgg\_tot\_mat = phfit\_kz\_mat}
+    and re-run \code{get\_Cl}.
+  \item \textbf{Disable 1-halo}: Set \code{Pgg\_1h\_kz\_mat = jnp.zeros(...)}.
+  \item \textbf{Switch to linear P(k)}: Replace \code{phfit\_kz\_mat} with
+    \code{plin\_kz\_mat} before running \code{get\_Cl}.
+  \item \textbf{Swap n(z)}: Modify \code{pzs\_inp\_mat\_inp\_lens} (lens) or
+    \code{pzs\_inp\_mat\_inp} (source) before running \code{get\_Cl}.
+\end{itemize}
+
+\subsection{NOT Modifiable Without Code Changes}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Component & Reason hardcoded \\
+\midrule
+Transfer function & Always Eisenstein--Hu (\file{jax\_cosmo\_power.py}) \\
+Halofit prescription & Always Takahashi 2012 \\
+Linear bias function & Always Tinker 2010 (\code{get\_bias\_Mz}) \\
+Central galaxy profile & Always Gaussian $\propto e^{-(r/2R_h)^2}$, $R_h=0.015r_{200c}$ \\
+SHMR functional form & Always Leauthaud 2011 \\
+HOD functional form & Always Zheng 2005 / Leauthaud 2011 \\
+Pressure-to-$y$ conversion & Always HSE (no GNFW input) \\
+Pressure factor & Always $P_e = P_{\rm th}/1.932$ \\
+IA model & Always NLA (no TATT) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%==============================================================================
+\section{Output Cl Attributes Summary}
+\label{sec:outputs}
+%==============================================================================
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Attribute & Shape & Description \\
+\midrule
+\code{Cl\_kappa\_kappa\_tot\_mat} & (nell, nbins, nbins) & $C_\ell^{\kappa\kappa}$ \\
+\code{Cl\_kappa\_y\_tot\_mat} & (nell, nbins) & $C_\ell^{\kappa y}$ \\
+\code{Cl\_gal\_gal\_tot\_mat} & (nell, nbins\_lens, nbins\_lens) & $C_\ell^{gg}$ \\
+\code{Cl\_gal\_y\_tot\_mat} & (nell, nbins\_lens) & $C_\ell^{gy}$ \\
+\code{Cl\_gal\_kappa\_tot\_mat} & (nell, nbins\_lens, nbins) & $C_\ell^{g\kappa}$ \\
+\code{Cl\_y\_y\_signal\_mat} & (nell,) & $C_\ell^{yy}$ (theory) \\
+\code{Cl\_y\_y\_noise\_mat} & (nell,) & $N_\ell^{yy}$ (from file) \\
+\code{Cl\_y\_y\_tot\_mat} & (nell,) & $C_\ell^{yy}+N_\ell^{yy}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The ell array is \code{analysis\_dict['l\_array\_survey']} (log-spaced, set by
+\code{setup\_ell\_arrays}).
+
+\subsection*{1h/2h diagnostics (\code{build\_1h2h\_dict=True})}
+Calling \code{get\_Cl(..., build\_1h2h\_dict=True)} populates
+\code{Cl\_1h2h\_dict} with keys \code{'yy'}, \code{'ky'}, \code{'kk'},
+\code{'gy'}, \code{'gk'}, \code{'gg'}, each containing \code{'1h'}, \code{'2h'},
+\code{'tot'} sub-keys as $D_\ell = \ell(\ell+1)C_\ell/2\pi$ arrays.
+
+%==============================================================================
+\bibliographystyle{apalike}
+\begin{thebibliography}{99}
+
+\bibitem[Behroozi et al.\ (2010)]{Behroozi2010}
+Behroozi, P.\ S., Conroy, C., \& Wechsler, R.\ H.\ 2010, ApJ, 717, 379.
+\newblock arXiv:0912.3915. \url{https://doi.org/10.1088/0004-637X/717/1/379}
+
+\bibitem[Bridle \& King (2007)]{Bridle2007}
+Bridle, S.\ \& King, L.\ 2007, NJPh, 9, 444
+
+\bibitem[Diemer \& Kravtsov (2015)]{Diemer2015}
+Diemer, B.\ \& Kravtsov, A.\ V.\ 2015, ApJ, 799, 108
+
+\bibitem[Duffy et al.\ (2008)]{Duffy2008}
+Duffy, A.\ R., et al.\ 2008, MNRAS, 390, L64
+
+\bibitem[Eisenstein \& Hu (1998)]{EisensteinHu1998}
+Eisenstein, D.\ J.\ \& Hu, W.\ 1998, ApJ, 496, 605
+
+\bibitem[Hirata \& Seljak (2004)]{Hirata2004}
+Hirata, C.\ M.\ \& Seljak, U.\ 2004, PhRvD, 70, 063526
+
+\bibitem[Leauthaud et al.\ (2011)]{Leauthaud2011}
+Leauthaud, A., et al.\ 2011, ApJ, 738, 45
+
+\bibitem[Limber (1953)]{Limber1953}
+Limber, D.\ N.\ 1953, ApJ, 117, 134
+
+\bibitem[Prada et al.\ (2012)]{Prada2012}
+Prada, F., et al.\ 2012, MNRAS, 423, 3018
+
+\bibitem[Schneider et al.\ (2015)]{Schneider2015}
+Schneider, A.\ \& Teyssier, R.\ 2015, JCAP, 12, 049
+
+\bibitem[Schneider et al.\ (2019)]{Schneider2019}
+Schneider, A., et al.\ 2019, JCAP, 03, 020
+
+\bibitem[Takahashi et al.\ (2012)]{Takahashi2012}
+Takahashi, R., et al.\ 2012, ApJ, 761, 152
+
+\bibitem[Tinker et al.\ (2008)]{Tinker2008}
+Tinker, J., et al.\ 2008, ApJ, 688, 709
+
+\bibitem[Tinker et al.\ (2010)]{Tinker2010}
+Tinker, J.\ L., et al.\ 2010, ApJ, 724, 878
+
+\end{thebibliography}
+
+\end{document}

@@ -55,8 +55,8 @@ class Profiles(base_class):
         # Without this, adiabatic relaxation (Eq. 11) displaces satellite shells via the
         # gas/stellar mass, making u_clm ≠ f_clm*u_nfw even in the no-bary run.
         # This affects both gg (satellite leg) and the galaxy leg of gκ.
-        if not self.baryonification:
-            self.backreaction = False
+        # if not self.baryonification:
+        #     self.backreaction = False
         # --- no-baryonification: end ---
         self.run_clm_calc()
         self.run_cga_calc()
@@ -645,7 +645,7 @@ class Profiles(base_class):
         Ncen_mat = get_vmapped_func(get_Ncen, 3)(jnp.array([jz]), jnp.array([jM]), jnp.log10(Mthresh_array)).T
 
         val1 = (Ncen_mat[0,0,-1]*Mthresh_array[-1] - Ncen_mat[0,0,0]*Mthresh_array[0])
-        val2 = jsi.trapezoid(Ncen_mat[0,0,:]*Mthresh_array, x=jnp.log10(Mthresh_array))
+        val2 = jnp.log(10.) * jsi.trapezoid(Ncen_mat[0,0,:]*Mthresh_array, x=jnp.log10(Mthresh_array))
         Mstar_cen = val2 - val1
         Mtot = self.Mtot_mat[jz, jM]
         return Mstar_cen / Mtot
@@ -674,7 +674,7 @@ class Profiles(base_class):
         Nsat_mat = get_vmapped_func(get_Nsat, 3)(jnp.array([jz]), jnp.array([jM]), jnp.log10(Mthresh_array)).T
 
         val1 = (Nsat_mat[0,0,-1]*Mthresh_array[-1] - Nsat_mat[0,0,0]*Mthresh_array[0])
-        val2 = jsi.trapezoid(Nsat_mat[0,0,:]*Mthresh_array, x=jnp.log10(Mthresh_array))
+        val2 = jnp.log(10.) * jsi.trapezoid(Nsat_mat[0,0,:]*Mthresh_array, x=jnp.log10(Mthresh_array))
         Mstar_sat = val2 - val1
         Mtot = self.Mtot_mat[jz, jM]
         return Mstar_sat / Mtot
@@ -714,11 +714,11 @@ class Profiles(base_class):
         u = r / self.r_co_mat[jz, jM]
         v = r / self.r_ej_mat[jz, jM]
 
-        # y = r / self.rt_mat[jz, jM]
-        # fac = (1 / (1 + y**2)**2)
+        y = r / self.rt_mat[jz, jM]
+        fac = (1 / (1 + y**2)**2)
 
         rho_gas_unnorm = 1 / (jnp.power(1 + u, self.beta_mat[jz, jM]) * jnp.power(1 + jnp.power(v, self.gamma_rhogas), (self.delta_rhogas - self.beta_mat[jz, jM]) / self.gamma_rhogas))
-        return rho_gas_unnorm    
+        return fac*rho_gas_unnorm    
 
     @partial(jit, static_argnums=(0,))
     def get_rho_gas_norm(self, jz, jM, rmax_r200c=16):
@@ -774,6 +774,28 @@ class Profiles(base_class):
         return zeta
 
 
+    # @partial(jit, static_argnums=(0,))
+    # def get_rho_clm(self, jz, jM, r_array_here=None):
+    #     '''Get the rho_clm directly following Schneider 2019 paper. Thanks to Sven Heydenreich for identifying bug in original expression.'''
+    #     if r_array_here is None:
+    #         r_array_here = self.r_array
+    #         Mclm_here = self.Mclm_mat[:, jz, jM]
+    #     else:
+    #         Mclm_here = jnp.exp(jnp.interp(jnp.log(r_array_here), jnp.log(self.r_array), jnp.log(self.Mclm_mat[:, jz, jM])))
+        
+    #     # rho_clm = (1/4 pi r^2) dM_clm/dr.  The previous implementation took
+    #     # jax.grad of a piecewise-linear jnp.interp of log M_clm(log r): in the
+    #     # saturated outer region (M_clm flat for the truncated NFW) the local
+    #     # segment slope went <=0 and was clipped to 0, collapsing the tail to
+    #     # exactly zero and losing ~6% of the enclosed mass. Use a central-difference
+    #     # log-derivative instead — smooth, JAX-native/differentiable, and mass is
+    #     # conserved to <2% (r_array is log-spaced so ln r is uniformly spaced).
+    #     ln_r        = jnp.log(r_array_here)
+    #     ln_Mclm     = jnp.log(jnp.clip(Mclm_here, 0, None) + 1e-30)
+    #     dlnMclm_dlnr = jnp.gradient(ln_Mclm, ln_r)
+    #     dMclm_dr     = dlnMclm_dlnr * Mclm_here / r_array_here
+    #     rho_clm      = dMclm_dr / (4 * jnp.pi * r_array_here**2)
+    #     return jnp.clip(rho_clm, 0, 1e30)
     @partial(jit, static_argnums=(0,))
     def get_rho_clm(self, jz, jM, r_array_here=None):
         '''Get the rho_clm directly following Schneider 2019 paper. Thanks to Sven Heydenreich for identifying bug in original expression.'''

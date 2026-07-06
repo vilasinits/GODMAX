@@ -48,7 +48,8 @@ class get_Cl(get_Pkz):
         # Convert the 3D power spectra multipole space Pkz_ell:
         vmapped_func = get_vmapped_func_warg(self.get_P_lz, 2, 3)
         self.Pkmm_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pmm_tot_mat).T
-        self.Pkmm_nfw_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.phfit_kz_mat).T 
+        # self.Pkmm_nfw_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.phfit_kz_mat).T 
+        self.Pkmm_nfw_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pmm_nfw_tot_mat).T
         if self.model_tSZ:
             self.Pkym_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pym_tot_mat).T
             Bl_array = jnp.exp(-1. * self.ell_array * (self.ell_array + 1) * (self.sig_beam ** 2) / 2.)

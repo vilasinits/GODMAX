@@ -35,15 +35,25 @@ class get_Pkz(Profiles):
 
         # Do the FFTlog transform of the real-space profiles:
         xi2P_obj = (xi2P(self.r_array, nx=self.nr,lowring=True))
-        self.k_mcfit, uk_dmb = xi2P_obj(self.rho_dmb_mat / self.Mtot_mat[None, :, :], axis=0, extrap=False)
+        # Grid-consistent normalisation: the profiles are normalised on a per-halo
+        # [0.01,16]*r200c window, but FFTLog integrates them on the FIXED r_array grid
+        # [rmin,rmax] Mpc. When 16*r200c != rmax the grid integral != Mtot, which makes
+        # u(k->0) != 1 (e.g. low-M/low-z haloes leak the gas tail and reach u(0)~1.8).
+        # Dividing by the mass actually enclosed within the FFT grid forces u(k->0)=1,
+        # exactly as uk_clm is already normalised by Mclm_mat[-1] below.
+        _fourpi_r2 = 4.0 * jnp.pi * self.r_array[:, None, None] ** 2
+        self.Mdmb_grid = jnp.trapezoid(_fourpi_r2 * self.rho_dmb_mat, self.r_array, axis=0)
+        self.Mnfw_grid = jnp.trapezoid(_fourpi_r2 * self.rho_nfw_mat, self.r_array, axis=0)
+        self.k_mcfit, uk_dmb = xi2P_obj(self.rho_dmb_mat / self.Mdmb_grid[None, :, :], axis=0, extrap=False)
         self.uk_dmb_tointp = jnp.array(uk_dmb)
-        self.k_mcfit, uk_nfw = xi2P_obj(self.rho_nfw_mat / self.Mtot_mat[None, :, :], axis=0, extrap=False)
+        self.k_mcfit, uk_nfw = xi2P_obj(self.rho_nfw_mat / self.Mnfw_grid[None, :, :], axis=0, extrap=False)
         self.uk_nfw_tointp = jnp.array(uk_nfw)
 
         if self.model_galaxies:
             self.k_mcfit, uk_clm = xi2P_obj(self.rho_clm_mat / self.Mclm_mat[-1, :, :][None, :, :], axis=0, extrap=False)
             self.uk_clm_tointp = jnp.array(uk_clm)
             self.k_mcfit, uk_ne = xi2P_obj(self.ne_mat / self.ne_mat_norm[-1, :, :][None, :, :], axis=0, extrap=False)
+            # self.k_mcfit, uk_ne = xi2P_obj(self.ne_mat, axis=0, extrap=False)
             self.uk_ne_tointp = jnp.array(uk_ne)
         else: self.uk_clm_tointp, self.uk_ne_tointp = jnp.zeros((1,1,1)), jnp.zeros((1,1,1))
                         
@@ -93,6 +103,7 @@ class get_Pkz(Profiles):
 
             bm_nfw_2h = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 1).T
             self.bm_nfw_kz_mat = bm_nfw_2h + self.bm_largescales_2h_mat_lt_Mmin   
+
         else:
             self.bm_dmb_kz_mat = jnp.ones((len(self.nk), self.nz))
             self.bm_nfw_kz_mat = jnp.ones((len(self.nk), self.nz))
@@ -281,7 +292,16 @@ class get_Pkz(Profiles):
         slope_left    = (log_uk[1] - log_uk[0]) / (log_k[1] - log_k[0])
         log_uk_extrap = jnp.minimum(log_uk[0] + slope_left * (log_kPk - log_k[0]), 0.0)
 
-        return jnp.exp(jnp.where(log_kPk < log_k[0], log_uk_extrap, log_uk_interp))
+        # return jnp.exp(jnp.where(log_kPk < log_k[0], log_uk_extrap, log_uk_interp))
+        # Smooth blend around k_mcfit[0]
+        # width is in log(k); 0.15 means roughly a 15%–20% transition width
+        width = 0.15
+
+        w = 0.5 * (1.0 + jnp.tanh((log_kPk - log_k[0]) / width))
+
+        log_uk_matched = (1.0 - w) * log_uk_extrap + w * log_uk_interp
+
+        return jnp.exp(log_uk_matched)
     
     @partial(jit, static_argnums=(0,))
     def get_bias_Mz(self, jz, jM, mdef_delta=200):

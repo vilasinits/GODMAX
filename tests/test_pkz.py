@@ -22,16 +22,19 @@ class TestFourierProfiles:
         assert pkz_obj.uk_nfw.shape == (nk, nz, nM)
 
     def test_uk_dmb_at_low_k_near_unity(self, pkz_obj):
-        """u(k→0) = 1 by Fourier normalization (mass-normalized profiles)."""
+        """u(k→0) = 1 by Fourier normalization (mass-normalized profiles).
+
+        Tight bound: catches the k < k_mcfit[0] clamp regression, where uk
+        froze at the FFTlog edge value instead of extrapolating to 1.
+        """
         uk_low_k = np.abs(np.array(pkz_obj.uk_dmb[0]))  # lowest k bin
-        # Should be close to 1 for most (z, M) combinations
         median_val = float(np.median(uk_low_k))
-        assert 0.5 < median_val < 1.5
+        assert 0.99 < median_val <= 1.0
 
     def test_uk_nfw_at_low_k_near_unity(self, pkz_obj):
         uk_low_k = np.abs(np.array(pkz_obj.uk_nfw[0]))
         median_val = float(np.median(uk_low_k))
-        assert 0.5 < median_val < 1.5
+        assert 0.99 < median_val <= 1.0
 
     def test_uk_y_shape(self, pkz_obj):
         nk, nz, nM = pkz_obj.nk, pkz_obj.nz, pkz_obj.nM
@@ -88,6 +91,17 @@ class TestMatterPkz:
     def test_Pmm_sup_factor_positive(self, pkz_obj):
         """Suppression factor S(k,z) = P_halofit / P_NFW_halomodel must be positive."""
         assert float(jnp.min(pkz_obj.Pmm_sup_tot_mat)) > 0.0
+
+    def test_Pmm_dmb_over_nfw_ratio_to_unity_at_low_k(self, pkz_obj):
+        """Baryon suppression P_dmb/P_nfw must -> 1 at large scales (low k).
+
+        Regression test for the k < k_mcfit[0] clamp bug: uk_dmb and uk_nfw
+        froze at different non-unity constants below the FFTlog grid edge,
+        so the ratio was stuck off from 1 even at the lowest k instead of
+        converging there.
+        """
+        ratio_low_k = float(pkz_obj.Pmm_dmb_tot_mat[0, 0] / pkz_obj.Pmm_nfw_tot_mat[0, 0])
+        assert 0.99 < ratio_low_k <= 1.01
 
 
 class TestTSZPkz:
