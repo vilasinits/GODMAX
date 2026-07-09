@@ -125,6 +125,17 @@ class get_Pkz(Profiles):
         else: self.uk_y = jnp.zeros((1,1,1))
         if self.model_galaxies:
             self.uk_clm = vmapped_func(jnp.arange(self.nz), jnp.arange(self.nM), 2).T
+            # OLD (no low-k renormalization): the satellite Fourier profile was used as-is, so its k->0 limit was
+            #   sum(rho_clm dV)/Mclm[-1], which is only ~1 when rho_clm integrates back to its normalization mass.
+            #   self.uk_clm = self.uk_clm   # <- effectively no change; kept for reference
+            #
+            # NEW (fix): force u_sat(k_min)=1 by construction. In the no-backreaction branch rho_clm is analytic
+            # (fclm*rho_nfw) so the k->0 limit is ~0.98-1.0, but in the backreaction branch rho_clm is a clipped
+            # numerical dMclm/dr that loses ~15% of the mass (~0.84-0.90), making the large-scale galaxy bias bg
+            # differ between the two runs. Since backreaction only redistributes mass within the halo, the large-scale
+            # (2-halo) galaxy bias must be backreaction-independent; renormalizing to the low-k limit enforces this and
+            # makes Pgg/Pgm/Pgy/Pge ratios -> 1 at large scales.
+            self.uk_clm = self.uk_clm / jnp.clip(self.uk_clm[0:1, :, :], 1e-30)
             self.nbarz = jnp.maximum(jsi.trapezoid(self.hmf_Mz_mat * (self.Ncen_mat + self.Nsat_mat), jnp.log(self.M_array), axis=-1), 1e-10)
             self.ukg_cross = jnp.maximum((self.Ncen_mat[None,:,:] + self.Nsat_mat[None,:,:] * self.uk_clm)/self.nbarz[None,:,None], 1e-10)
             ukg_auto_arg = jnp.maximum(

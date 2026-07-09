@@ -301,7 +301,11 @@ class Profiles(base_class):
             # Calculate CLM density without backreaction
             self.rho_clm_mat = self.fclm_mat[None, :, :] * self.rho_nfw_mat
             # Calculate CLM mass without backreaction
-            self.Mclm_mat = self.fclm_mat[None, :, :] * get_vmapped_func(self.get_Mnfw, 3)(jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)).T
+            # self.Mclm_mat = self.fclm_mat[None, :, :] * get_vmapped_func(self.get_Mnfw, 3)(jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)).T
+            # get_Mnfw underflows to exactly 0.0 at the innermost radius (jr=0), giving Mclm_mat=0 across the whole
+            # (nz, nM) inner slice. Clip to 1e-30 to match the floor applied in the backreaction path (get_Mclm),
+            # keeping both branches consistent and avoiding inf/NaN in downstream ratios (e.g. rho_clm derivatives).
+            self.Mclm_mat = jnp.clip(self.fclm_mat[None, :, :] * get_vmapped_func(self.get_Mnfw, 3)(jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)).T, 1e-30)
 
     @timing_decorator
     def run_cga_calc(self):
@@ -934,7 +938,11 @@ class Profiles(base_class):
         logx = jnp.linspace(jnp.log(r), jnp.log(rmax_r200c*self.r200c_mat[jz, jM]), self.num_points_trapz_int)
         x = jnp.exp(logx)
         fx1 = (vmap(self.get_rho_gas_normed, (0, None, None,None))(jnp.arange(len(logx)), jz, jM, x))
-        fx2 = jnp.exp(jnp.interp(logx, jnp.log(self.r_array), jnp.log(self.Mdmb_mat[:,jz, jM])))
+        # Mdmb_mat is a cumulative enclosed mass, so its innermost radial node is
+        # exactly 0; log(0) = -inf poisons this interp -> NaN pressure -> NaN y3d.
+        # Floor the mass before taking the log (the tiny inner mass is negligible).
+        # fx2 = jnp.exp(jnp.interp(logx, jnp.log(self.r_array), jnp.log(self.Mdmb_mat[:,jz, jM])))
+        fx2 = jnp.exp(jnp.interp(logx, jnp.log(self.r_array), jnp.log(jnp.clip(self.Mdmb_mat[:,jz, jM], 1e-30))))
         fx = (fx1 * fx2 * G_new / x**2) * x
         Ptot = jsi.trapezoid(fx, x=logx)
         # there is a factor of h^2 as dP = -G * rho_g * M(<r)/r^2 dr ~ G * M^2/r^4 and both mass and r are in the units of little h
