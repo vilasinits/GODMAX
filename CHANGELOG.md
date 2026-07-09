@@ -8,7 +8,13 @@ Each entry lists the commit hash, date, and every fix in that commit.
 
 ## [Unreleased]
 
-### (this commit) — 2026-07-09 — Add CHANGELOG documenting fixes on tsv-dev-debug
+### (this commit) — 2026-07-09 — Add BUGS.md bug tracker
+
+- **`BUGS.md`** — New local bug tracker for this branch (fork issues are disabled).
+  Seeded with the two fixed bugs B1 (`Mclm_mat` zeros) and B2 (satellite profile
+  normalization), both fixed in `2bbedc1`.
+
+### 9ee5fc8 — 2026-07-09 — Add CHANGELOG documenting fixes on tsv-dev-debug
 
 - **`CHANGELOG.md`** — New file. Introduces a per-commit changelog for this branch.
 
