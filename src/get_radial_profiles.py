@@ -10,6 +10,7 @@ from jax_cosmo.scipy.integrate import simps
 from jax_cosmo.scipy.interpolate import InterpolatedUnivariateSpline
 import jax_cosmo.background as bkgrd
 import time
+import warnings
 import interpax
 from base_class import base_class, get_vmapped_func, get_vmapped_func_warg
 from hmf_symbolic import *
@@ -161,6 +162,25 @@ class Profiles(base_class):
             
         self.r_co_mat = self.theta_co * self.r200c_mat
         self.r_ej_mat = self.theta_ej * self.r200c_mat
+
+        # M3 grid-coverage check: the FFTLog grid only reaches rmax = r_array[-1], but the
+        # profiles physically extend to the truncation radius rt = epsilon_rt * r200c (and the
+        # gas out to ~theta_ej * r200c). If rmax < these for the heaviest/most-extended haloes,
+        # the grid truncates the profile inside its own support, so _profile_grid_mass < Mtot
+        # and the FFTLog u(k) shape is distorted for those haloes. Warn (does not change results).
+        rmax_grid = float(self.r_array[-1])
+        rt_max = float(jnp.max(self.rt_mat))
+        rej_max = float(jnp.max(self.r_ej_mat))
+        r_needed = max(rt_max, rej_max)
+        if rmax_grid < r_needed:
+            warnings.warn(
+                f"FFTLog grid under-covers the halo profiles: rmax (r_array[-1]) = {rmax_grid:.3g} Mpc "
+                f"< max profile extent {r_needed:.3g} Mpc (rt_max = {rt_max:.3g}, r_ej_max = {rej_max:.3g}). "
+                f"Massive/extended haloes are truncated on the grid, so _profile_grid_mass < Mtot and "
+                f"u(k) is distorted for them. Increase halo_params['rmax'] to >~ {r_needed:.3g} Mpc.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     @timing_decorator
     def setup_hod_params(self):
@@ -597,7 +617,7 @@ class Profiles(base_class):
             r = self.r_array[jr]
         else:
             r = r_array_here[jr]
-        minr = jnp.minimum(5e-4, 0.005*self.r200c_mat[jz, jM])
+        minr = jnp.minimum(jnp.minimum(5e-4, 0.5 * self.r_array[0]), 0.005*self.r200c_mat[jz, jM])
         logx = jnp.linspace(jnp.log(minr), jnp.log(r), self.num_points_trapz_int)
         Mnfw = self.logspace_trapezoidal_integral(self.get_rho_nfw_normed, logx, jz=jz, jM=jM, axis_tup=(0, None, None, None))
         return Mnfw
@@ -765,7 +785,7 @@ class Profiles(base_class):
             r = self.r_array[jr]
         else:
             r = r_array_here[jr]
-        minr = jnp.minimum(5e-4, 0.005*self.r200c_mat[jz, jM])        
+        minr = jnp.minimum(jnp.minimum(5e-4, 0.5 * self.r_array[0]), 0.005*self.r200c_mat[jz, jM])        
         logx = jnp.linspace(jnp.log(minr), jnp.log(r), self.num_points_trapz_int)
         Mcga = self.logspace_trapezoidal_integral(self.get_rho_cga, logx, jz=jz, jM=jM, axis_tup=(0, None, None, None))
         return Mcga
@@ -814,7 +834,7 @@ class Profiles(base_class):
             r = self.r_array[jr]
         else:
             r = r_array_here[jr]
-        minr = jnp.minimum(5e-4, 0.005*self.r200c_mat[jz, jM])        
+        minr = jnp.minimum(jnp.minimum(5e-4, 0.5 * self.r_array[0]), 0.005*self.r200c_mat[jz, jM])        
         logx = jnp.linspace(jnp.log(minr), jnp.log(r), self.num_points_trapz_int)
         Mgas = self.logspace_trapezoidal_integral(self.get_rho_gas_normed, logx, jz=jz, jM=jM, axis_tup=(0, None, None, None))
         return Mgas
@@ -906,7 +926,7 @@ class Profiles(base_class):
             r = self.r_array[jr]
         else:
             r = r_array_here[jr]
-        minr = jnp.minimum(5e-4, 0.005*self.r200c_mat[jz, jM])
+        minr = jnp.minimum(jnp.minimum(5e-4, 0.5 * self.r_array[0]), 0.005*self.r200c_mat[jz, jM])
         logx = jnp.linspace(jnp.log(minr), jnp.log(r), self.num_points_trapz_int)
         Mdmb = self.logspace_trapezoidal_integral(self.get_rho_dmb, logx, jz=jz, jM=jM, axis_tup=(0, None, None, None))
         return Mdmb
@@ -915,7 +935,7 @@ class Profiles(base_class):
     def get_Mdmb_r200(self, jz, jM):
         '''This is the mass inside some radius for the full dmb profile'''
         r = self.r200c_mat[jz, jM]
-        minr = jnp.minimum(5e-4, 0.005*self.r200c_mat[jz, jM])        
+        minr = jnp.minimum(jnp.minimum(5e-4, 0.5 * self.r_array[0]), 0.005*self.r200c_mat[jz, jM])        
         logx = jnp.linspace(jnp.log(minr), jnp.log(r), self.num_points_trapz_int)
         Mdmb = self.logspace_trapezoidal_integral(self.get_rho_dmb, logx, jz=jz, jM=jM, axis_tup=(0, None, None, None))
         return Mdmb
@@ -924,7 +944,7 @@ class Profiles(base_class):
     def get_r500_z0_wMdmb(self, jz, jM):
         '''This is the mass inside some radius for the full dmb profile'''
         r = self.r200c_mat[jz, jM]
-        minr = jnp.minimum(5e-4, 0.005*self.r200c_mat[jz, jM])        
+        minr = jnp.minimum(jnp.minimum(5e-4, 0.5 * self.r_array[0]), 0.005*self.r200c_mat[jz, jM])        
         logx = jnp.linspace(jnp.log(minr), jnp.log(r), self.num_points_trapz_int)
         Mdmb = self.logspace_trapezoidal_integral(self.get_rho_dmb, logx, jz=jz, jM=jM, axis_tup=(0, None, None, None))
         return Mdmb

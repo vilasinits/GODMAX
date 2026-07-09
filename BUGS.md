@@ -19,6 +19,28 @@ _(none yet — add as identified)_
 
 ## Fixed
 
+### B8 — FFTLog grid can under-cover the halo profiles (M3) — `enhancement` — FIXED (warning added)
+
+- **Where:** `src/get_radial_profiles.py` `setup_main_calc`
+- **Issue:** the FFTLog grid reaches only `rmax = r_array[-1]`, but profiles extend to
+  `rt = epsilon_rt·r200c` (and gas to `~theta_ej·r200c`). For `params_default.yaml`
+  (`rmax=8`, `lg10_Mmax=15.5`), `rt_max ≈ 12.4 Mpc > 8`, so heavy haloes are truncated on
+  the grid → `_profile_grid_mass < Mtot` and `u(k)` shape distorted for them. Not a logic
+  bug — silent param under-coverage.
+- **Fix:** emit a `RuntimeWarning` at init if `rmax < max(rt, r_ej)`, reporting the needed
+  `rmax`. Does not change results. (Physical inner/outer r200c-relative bounds M1 `0.01·r200c`
+  and M4 `6·r200c` are by-design and left as-is.)
+
+### B9 — enclosed-mass inner floor `minr` can coincide with `rmin` (M2, root of B1) — `bug` — FIXED
+
+- **Where:** `src/get_radial_profiles.py` (all `minr = ...` enclosed-mass integrals)
+- **Symptom:** for param sets with `rmin = 5e-4` (e.g. Pge) or massive haloes where
+  `0.005·r200c ≥ 5e-4`, `minr` equalled `rmin`, so `get_Mnfw(r_array[0])` integrated a
+  zero-width `[rmin, rmin]` interval → 0 → the `jr=0` zeros that B1 clips.
+- **Fix:** `minr = min(min(5e-4, 0.5·rmin), 0.005·r200c)`, guaranteeing `minr ≤ 0.5·rmin < rmin`
+  while preserving the `5e-4` floor for `rmin=0.005` (default unchanged). Removes the
+  zero-width integral at the source; B1's clip is now defensive/redundant.
+
 ### B4 — `num_points_gal_cal` param silently ignored (wrong key) — `bug` — FIXED
 
 - **Where:** `src/base_class.py` (grid/param setup)

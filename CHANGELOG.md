@@ -8,7 +8,18 @@ Each entry lists the commit hash, date, and every fix in that commit.
 
 ## [Unreleased]
 
-### (this commit) — 2026-07-09 — Fix CLM-mass conservation (large-scale Pgg) and param-file grid reads
+### (this commit) — 2026-07-09 — r-grid consistency: coverage warning (M3) and minr floor (M2)
+
+- **`src/get_radial_profiles.py`** — B8/M3: warn at init when the FFTLog grid under-covers
+  the profiles (`rmax < max(epsilon_rt·r200c, theta_ej·r200c)`), which truncates massive
+  haloes on the grid (`_profile_grid_mass < Mtot`). Diagnostic only, no result change.
+- **`src/get_radial_profiles.py`** — B9/M2: set the enclosed-mass inner floor to
+  `min(min(5e-4, 0.5·rmin), 0.005·r200c)` so `minr < rmin` strictly. Previously `minr`
+  could equal `rmin` (Pge / massive haloes) → zero-width integral at `jr=0` (the zeros B1
+  clips). Default params (`rmin=0.005`) unchanged; removes the zero-width at the source.
+- M1 (`0.01·r200c`) and M4 (`6·r200c`) left as-is: physical per-halo bounds, by design.
+
+### ac6bcc6 — 2026-07-09 — Fix CLM-mass conservation (large-scale Pgg) and param-file grid reads
 
 - **`src/get_radial_profiles.py`** — B7: compute `rho_clm` via a central-difference
   log-derivative `jnp.gradient(ln_Mclm, ln_r)` instead of `jax.grad` of a piecewise-linear
