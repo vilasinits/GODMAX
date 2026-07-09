@@ -125,17 +125,10 @@ class get_Pkz(Profiles):
         else: self.uk_y = jnp.zeros((1,1,1))
         if self.model_galaxies:
             self.uk_clm = vmapped_func(jnp.arange(self.nz), jnp.arange(self.nM), 2).T
-            # OLD (no low-k renormalization): the satellite Fourier profile was used as-is, so its k->0 limit was
-            #   sum(rho_clm dV)/Mclm[-1], which is only ~1 when rho_clm integrates back to its normalization mass.
-            #   self.uk_clm = self.uk_clm   # <- effectively no change; kept for reference
-            #
-            # NEW (fix): force u_sat(k_min)=1 by construction. In the no-backreaction branch rho_clm is analytic
-            # (fclm*rho_nfw) so the k->0 limit is ~0.98-1.0, but in the backreaction branch rho_clm is a clipped
-            # numerical dMclm/dr that loses ~15% of the mass (~0.84-0.90), making the large-scale galaxy bias bg
-            # differ between the two runs. Since backreaction only redistributes mass within the halo, the large-scale
-            # (2-halo) galaxy bias must be backreaction-independent; renormalizing to the low-k limit enforces this and
-            # makes Pgg/Pgm/Pgy/Pge ratios -> 1 at large scales.
-            self.uk_clm = self.uk_clm / jnp.clip(self.uk_clm[0:1, :, :], 1e-30)
+            # Note: u_sat(k->0)=1 is enforced by the low-k power-law extrapolation in
+            # get_uk_from_interp_Pk (uk -> 1 for k < k_mcfit[0]), NOT by a global rescale of
+            # uk_clm. A global uk_clm/uk_clm[0] rescale was tried and reverted: it rescales the
+            # whole profile by a run-dependent factor and corrupts the 1-halo (P1h) ratio.
             self.nbarz = jnp.maximum(jsi.trapezoid(self.hmf_Mz_mat * (self.Ncen_mat + self.Nsat_mat), jnp.log(self.M_array), axis=-1), 1e-10)
             self.ukg_cross = jnp.maximum((self.Ncen_mat[None,:,:] + self.Nsat_mat[None,:,:] * self.uk_clm)/self.nbarz[None,:,None], 1e-10)
             ukg_auto_arg = jnp.maximum(
@@ -275,15 +268,19 @@ class get_Pkz(Profiles):
         # Compute uk_val based on the probe
         uk_val = compute_uk_val(probe)
 
-        # Perform interpolation in log space for stability
+        # Perform interpolation in log space for stability. (A low-k power-law extrapolation
+        # was tried and reverted: once get_rho_clm conserves mass (B7), uk(k_mcfit[0]) ~ 1 for
+        # all profiles, so the plain clamped interp already gives the correct k->0 limit; the
+        # extrapolation instead drifted uk_dmb(k->0) off 1 and disturbed the DMB/halofit ratio.)
         return jnp.exp(
             jnp.interp(
-                jnp.log(self.kPk_array), 
-                jnp.log(self.k_mcfit), 
+                jnp.log(self.kPk_array),
+                jnp.log(self.k_mcfit),
                 jnp.log(jnp.clip(uk_val, 1e-30, jnp.inf))
             )
         )
-    
+
+
     @partial(jit, static_argnums=(0,))
     def get_bias_Mz(self, jz, jM, mdef_delta=200):
         '''Tinker 2010 bias function'''

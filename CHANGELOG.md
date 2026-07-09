@@ -8,7 +8,27 @@ Each entry lists the commit hash, date, and every fix in that commit.
 
 ## [Unreleased]
 
-### (this commit) — 2026-07-09 — Add BUGS.md bug tracker
+### (this commit) — 2026-07-09 — Fix CLM-mass conservation (large-scale Pgg) and param-file grid reads
+
+- **`src/get_radial_profiles.py`** — B7: compute `rho_clm` via a central-difference
+  log-derivative `jnp.gradient(ln_Mclm, ln_r)` instead of `jax.grad` of a piecewise-linear
+  `jnp.interp`. The old form zeroed the saturated outer tail of the truncated NFW and lost
+  ~15% of the CLM mass in the backreaction run only, so `u_clm(k→0)≈0.85` there vs `≈0.98`
+  in the no-backreaction run — breaking the large-scale `Pgg` (bary/no-bary) ratio. The
+  central difference conserves mass to <2%, restoring the large-scale `Pgg` ratio to 1
+  without disturbing the DMB/halofit matter ratio. Verified against both.
+- **`src/get_Pkzs.py`** — reverted two earlier symptom-patches now subsumed by B7: the
+  `uk_clm/uk_clm[0]` renorm (B2, corrupted the 1-halo ratio) and the low-k `uk`
+  extrapolation (B6, drifted `uk_dmb(k→0)` off 1 and broke DMB/halofit). `get_uk_from_interp_Pk`
+  is back to the plain log-space interp.
+- **`src/base_class.py`** — B4: read the dedicated `num_points_gal_cal` key instead of
+  mis-keying to `num_points_trapz_int` (param value was silently ignored).
+- **`src/base_class.py`** — B5: parse `z_array_source`/`z_array_lens` `[start, stop, n]`
+  shorthand consistently with `nbar_gal_comoving_zarray`, via new `_build_grid_1d` /
+  `_build_pzs` helpers; scalar `nz<jb>` now broadcasts to a flat p(z). Previously only
+  worked via an `except` fallback to a hardcoded grid.
+
+### 019d13c — 2026-07-09 — Add BUGS.md bug tracker
 
 - **`BUGS.md`** — New local bug tracker for this branch (fork issues are disabled).
   Seeded with the two fixed bugs B1 (`Mclm_mat` zeros) and B2 (satellite profile

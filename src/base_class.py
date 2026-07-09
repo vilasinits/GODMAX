@@ -124,6 +124,31 @@ class base_class:
         integral_value = jsi.trapezoid(fx, x=logx)
         return integral_value
 
+    @staticmethod
+    def _build_grid_1d(spec):
+        """Build a 1D grid from a spec that is either [start, stop, n] (with integer n>3 -> linspace)
+        or an explicit list/array of values. Same [start, stop, n] shorthand used for
+        nbar_gal_comoving_zarray, so redshift-distribution grids parse consistently."""
+        if isinstance(spec, (list, tuple)) and len(spec) == 3 and isinstance(spec[2], int) and spec[2] > 3:
+            return jnp.linspace(spec[0], spec[1], spec[2])
+        return jnp.array(spec)
+
+    @staticmethod
+    def _build_pzs(nz_info_dict, nbins, z_grid):
+        """Build the (nbins, len(z_grid)) p(z) matrix. Each bin's 'nz<jb>' may be a full-length
+        array (used as-is) or a single scalar (broadcast to a flat distribution over z_grid)."""
+        n = len(z_grid)
+        pzs = np.zeros((nbins, n))
+        for jb in range(nbins):
+            nz_jb = np.atleast_1d(np.asarray(nz_info_dict['nz' + str(jb)], dtype=float))
+            if nz_jb.shape[0] == n:
+                pzs[jb, :] = nz_jb
+            elif nz_jb.shape[0] == 1:
+                pzs[jb, :] = nz_jb[0]
+            else:
+                raise ValueError(f"nz{jb} length {nz_jb.shape[0]} does not match z grid length {n}")
+        return jnp.array(pzs)
+
 
     @timing_decorator
     def read_all_input(self, sim_params_dict, halo_params_dict, analysis_dict=None, other_params_dict=None):
@@ -337,7 +362,9 @@ class base_class:
 
         # Controls the accuracy of the trapezoidal integration.
         self.num_points_trapz_int = analysis_dict.get('num_points_trapz_int', 64)
-        self.num_points_gal_cal = analysis_dict.get('num_points_trapz_int', 32)
+        # Read the dedicated 'num_points_gal_cal' key (previously mis-keyed to 'num_points_trapz_int',
+        # so the param-file value was silently ignored and this always mirrored num_points_trapz_int).
+        self.num_points_gal_cal = analysis_dict.get('num_points_gal_cal', 32)
         
         self.calc_nfw_only = analysis_dict.get('calc_nfw_only', True)
         self.beam_fwhm_arcmin = analysis_dict.get('beam_fwhm_arcmin', 1.4)
@@ -356,12 +383,9 @@ class base_class:
         nz_info_dict = analysis_dict.get('nz_source_info_dict', None)
         try:
             self.nbins = nz_info_dict['nbins']
-            self.z_array_nz = jnp.array(nz_info_dict['z_array_source'])
-            pzs_inp_mat = np.zeros((self.nbins, len(self.z_array_nz)))
-            for jb in range(self.nbins):
-                pzs_inp_mat[jb, :] = nz_info_dict['nz' + str(jb)]
-            self.pzs_inp_mat_inp = jnp.array(pzs_inp_mat)
-        except:
+            self.z_array_nz = self._build_grid_1d(nz_info_dict['z_array_source'])
+            self.pzs_inp_mat_inp = self._build_pzs(nz_info_dict, self.nbins, self.z_array_nz)
+        except Exception:
             self.nbins = 1
             self.z_array_nz = jnp.linspace(0.01, 1.5, 128)
             self.pzs_inp_mat_inp = jnp.array([jnp.ones_like(self.z_array_nz)])
@@ -370,16 +394,13 @@ class base_class:
         nz_info_dict = analysis_dict.get('nz_lens_info_dict', None)
         try:
             self.nbins_lens = nz_info_dict['nbins_lens']
-            self.z_array_nz_lens = jnp.array(nz_info_dict['z_array_lens'])
+            self.z_array_nz_lens = self._build_grid_1d(nz_info_dict['z_array_lens'])
             self.zmax_lens = self.z_array_nz_lens[-1]
-            pzs_inp_mat = np.zeros((self.nbins_lens, len(self.z_array_nz_lens)))
-            for jb in range(self.nbins_lens):
-                pzs_inp_mat[jb, :] = nz_info_dict['nz' + str(jb)]
-            self.pzs_inp_mat_inp_lens = jnp.array(pzs_inp_mat)
+            self.pzs_inp_mat_inp_lens = self._build_pzs(nz_info_dict, self.nbins_lens, self.z_array_nz_lens)
             self.z_edges_bins_lens = jnp.array(
                 nz_info_dict.get('z_edges_bins_lens', [[self.z_array_nz_lens[0], self.z_array_nz_lens[-1]]])
             )
-        except:
+        except Exception:
             self.nbins_lens = 1
             self.z_array_nz_lens = jnp.linspace(0.01, 1.5, 128)
             self.z_edges_bins_lens = jnp.array([[0.1, 1.5]])

@@ -852,19 +852,21 @@ class Profiles(base_class):
         else:
             Mclm_here = jnp.exp(jnp.interp(jnp.log(r_array_here), jnp.log(self.r_array), jnp.log(self.Mclm_mat[:, jz, jM])))
         
-        # lnMclm_interp = interpax.CubicSpline(jnp.log(r_array_here), jnp.log(jnp.clip(Mclm_here, 0, None) + 1e-30), extrapolate=True, check=False)
-        # lnMclm_interp = interpax.Akima1DInterpolator(jnp.log(r_array_here), jnp.log(Mclm_here + 1e-30), extrapolate=True, check=False)
-        # lnMclm_interp = interpax.PchipInterpolator(jnp.log(r_array_here), jnp.nan_to_num(jnp.log(jnp.clip(Mclm_here, 0, None) + 1e-30)), extrapolate=True, check=False)
-        # dlnMclm_dr = lnMclm_interp.derivative(nu=1)(jnp.log(r_array_here))
-
-        # def lnMclm_interp(x, xp, yp):
-        #   return jnp.interp(x, xp, yp)
-        # lnMclm_interp = (jnp.log(r_array_here), jnp.log(jnp.clip(Mclm_here, 0, None) + 1e-30), extrapolate=True, check=False)
-        dlnMclm_dr = jax.vmap(jax.grad(lambda x_val: jnp.interp(x_val, jnp.log(r_array_here), jnp.log(jnp.clip(Mclm_here, 0, None) + 1e-30))))(jnp.log(r_array_here))
-        # f_prime_vec = jax.vmap(f_prime)(x_grid)
-
-        dMclm_dr = dlnMclm_dr * Mclm_here / r_array_here
-        rho_clm = dMclm_dr / (4*jnp.pi*r_array_here**2)   
+        # rho_clm = (1/4 pi r^2) dM_clm/dr. The previous implementation took jax.grad of a
+        # piecewise-linear jnp.interp of log M_clm(log r): in the saturated outer region
+        # (M_clm flat for the truncated NFW) the local segment slope went <=0 and was clipped
+        # to 0, collapsing the tail to zero and losing ~15% of the enclosed mass. In the
+        # backreaction run that dropped u_clm(k->0) to ~0.85 while the no-backreaction run
+        # (analytic fclm*rho_nfw) stayed ~0.98, so the large-scale Pgg ratio was not 1.
+        # Use a central-difference log-derivative instead — smooth, JAX-differentiable, and
+        # mass-conserving to <2% (r_array is log-spaced so ln r is uniformly spaced).
+        # OLD (buggy):
+        # dlnMclm_dr = jax.vmap(jax.grad(lambda x_val: jnp.interp(x_val, jnp.log(r_array_here), jnp.log(jnp.clip(Mclm_here, 0, None) + 1e-30))))(jnp.log(r_array_here))
+        ln_r         = jnp.log(r_array_here)
+        ln_Mclm      = jnp.log(jnp.clip(Mclm_here, 0, None) + 1e-30)
+        dlnMclm_dlnr = jnp.gradient(ln_Mclm, ln_r)
+        dMclm_dr     = dlnMclm_dlnr * Mclm_here / r_array_here
+        rho_clm      = dMclm_dr / (4 * jnp.pi * r_array_here**2)
         return jnp.clip(rho_clm, 0, 1e30)
 
 
