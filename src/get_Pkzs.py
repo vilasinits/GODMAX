@@ -110,9 +110,12 @@ class get_Pkz(Profiles):
         else: self.uk_clm_tointp, self.uk_ne_tointp = jnp.zeros((1,1,1)), jnp.zeros((1,1,1))
                         
         if self.model_tSZ:
-            self.k_mcfit, uk_y = xi2P_obj(self.y3d_mat, axis=0, extrap=False)
+            # tSZ toggle: baryonified DMB-HSE pressure (y3d_mat) or the gravity-only NFW baseline
+            # (y3d_nfw_mat, Y3D-matched so uk_y(k->0) is unchanged -> large-scale y ratio -> 1).
+            y3d_for_uk = self.y3d_mat if self.baryonification_tSZ else self.y3d_nfw_mat
+            self.k_mcfit, uk_y = xi2P_obj(y3d_for_uk, axis=0, extrap=False)
             self.uk_y_tointp = jnp.array(uk_y)
-        else: self.uk_y_tointp = jnp.zeros((1,1,1)) 
+        else: self.uk_y_tointp = jnp.zeros((1,1,1))
                        
 
         # Get the Fourier profiles uk's in the interpolated k array:
@@ -186,7 +189,11 @@ class get_Pkz(Profiles):
         self.Pmm_dmb_2h_kz_mat = self.bm_dmb_kz_mat * self.bm_dmb_kz_mat * self.plin_kz_mat
         self.Pmm_nfw_2h_kz_mat = self.bm_nfw_kz_mat * self.bm_nfw_kz_mat * self.plin_kz_mat
         if self.model_tSZ:
-            self.Pym_2h_kz_mat = self.bm_dmb_kz_mat * self.by_kz_mat * self.plin_kz_mat
+            # Pym matter leg follows the tSZ toggle: gravity-only pressure pairs with the NFW matter
+            # leg (bm_nfw) so Pym = NFW-pressure x NFW-matter is a consistent gravity-only cross-spectrum.
+            bm_for_ym = self.bm_dmb_kz_mat if self.baryonification_tSZ else self.bm_nfw_kz_mat
+            self.Pym_2h_kz_mat = bm_for_ym * self.by_kz_mat * self.plin_kz_mat
+            self.Pyy_2h_kz_mat = self.by_kz_mat * self.by_kz_mat * self.plin_kz_mat
         if self.model_galaxies:
             self.Pge_2h_kz_mat = self.bg_kz_mat * self.be_kz_mat * self.plin_kz_mat
             self.Pgm_2h_kz_mat = self.bg_kz_mat * self.bm_dmb_kz_mat * self.plin_kz_mat
@@ -206,7 +213,10 @@ class get_Pkz(Profiles):
             self.Pmm_dmb_1h_kz_mat = self.Pmm_dmb_1h_kz_mat * self.lowpass_filter
 
         if self.model_tSZ:
-            self.Pym_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 0, 3).T
+            # matter leg probe: 0 = DMB (baryonified), 1 = NFW (gravity-only) to match the tSZ toggle.
+            ym_matter_probe = 0 if self.baryonification_tSZ else 1
+            self.Pym_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), ym_matter_probe, 3).T
+            self.Pyy_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 3, 3).T
         if self.model_galaxies:
             self.Pge_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 2, 4).T
             self.Pgm_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 0, 2).T
@@ -226,6 +236,10 @@ class get_Pkz(Profiles):
             self.Pym_tot_mat = self._combine_1h2h_poweradd(self.Pym_1h_kz_mat, self.Pym_2h_kz_mat, self.alpha_ky)
             if self.tSZ_transition_model == 'response':
                 self.Pym_tot_mat = self.Pym_tot_mat * self.Pmm_sup_tot_mat
+            # tSZ auto-spectrum (moved here from get_covs so it is available alongside the other
+            # P(k,z) spectra). Kept as the simple 1h+2h sum to reproduce the previous covariance
+            # behaviour exactly; get_covs now consumes self.Pyy_tot_kz_mat instead of recomputing it.
+            self.Pyy_tot_kz_mat = self.Pyy_1h_kz_mat + self.Pyy_2h_kz_mat
         if self.model_galaxies:
             self.Pge_tot_mat = self._combine_1h2h_poweradd(self.Pge_1h_kz_mat, self.Pge_2h_kz_mat, self.alpha_ge)
             if self.galaxy_electron_transition_model == 'response':

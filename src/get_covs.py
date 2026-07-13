@@ -33,17 +33,14 @@ class get_cov(get_Cl):
         else:
             self.__dict__.update(Cl_obj.__dict__)
 
-        # Ingredients for trispectra
-        self.uyl_mat_tointp = get_vmapped_func(self.get_uyl, 3)(jnp.arange(self.nell), jnp.arange(self.nz), jnp.arange(self.nM)).T
+        # Ingredients for trispectra. (uyl_mat_tointp / uyl_mat / uy_l_for_cov are now computed in
+        # get_Cls and inherited here.)
         self.ukappal_dmb_prefac_mat_tointp = get_vmapped_func(self.get_ukappal_dmb_prefac, 3)(jnp.arange(self.nell), jnp.arange(self.nz), jnp.arange(self.nM)).T
         if self.model_galaxies:
             self.ugl_mat_tointp = get_vmapped_func(self.get_ugl_cross, 3)(jnp.arange(self.nell), jnp.arange(self.nz), jnp.arange(self.nM)).T
         self.ukappal_dmb_prefac_mat = get_vmapped_func(self.get_ukl_interp, 2)(jnp.arange(self.nell), jnp.arange(self.nM)).T
         self.ukappal_dmb_prefac_mat = jnp.moveaxis(self.ukappal_dmb_prefac_mat, 0, 1)
         self.ukappa_l_for_cov = vmap(self.get_ukappa_l_forcov)(jnp.arange(self.nbins))
-        self.uyl_mat = get_vmapped_func(self.get_uyl_interp, 2)(jnp.arange(self.nell), jnp.arange(self.nM)).T
-        self.uyl_mat = jnp.moveaxis(self.uyl_mat, 0, 1)
-        self.uy_l_for_cov = self.get_uy_l_forcov()
         if self.model_galaxies:
             self.ugl_mat = get_vmapped_func(self.get_ugl_interp, 2)(jnp.arange(self.nell), jnp.arange(self.nM)).T
             self.ugl_mat = jnp.moveaxis(self.ugl_mat, 0, 1)
@@ -52,14 +49,9 @@ class get_cov(get_Cl):
 
 
 
-        # tSZ auto-spectrum
-        vmapped_func = get_vmapped_func_warg(self.get_P_1h, 2, 4)
-        Pyy_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 3, 3).T
-        Pyy_2h_kz_mat = self.by_kz_mat * self.by_kz_mat * self.plin_kz_mat
-        self.Pyy_tot_kz_mat = Pyy_1h_kz_mat + Pyy_2h_kz_mat
-        self.Pkyy_lz_mat = get_vmapped_func(self.get_Pkyy_lz, 2)(jnp.arange(self.nell), jnp.arange(self.nz)).T
-        self.logPkyylz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkyy_lz_mat), extrap=True)                
-        self.Cl_y_y_tot_mat = vmap(self.get_Cl_y_y_tot)(jnp.arange(self.nell))
+        # tSZ auto-spectrum: Pyy_tot_kz_mat (Pyy_1h/2h/tot) is now computed in get_Pkzs and inherited
+        # here. Pkyy_lz_mat / logPkyylz_2d_interp / Cl_y_y_tot_mat are now computed in get_Cls and
+        # inherited here (get_Pyy_interp below still uses the inherited logPkyylz_2d_interp).
 
 
 
@@ -424,16 +416,6 @@ class get_cov(get_Cl):
 
 
     @partial(jit, static_argnums=(0,))
-    def get_uyl(self, jl, jz, jM):
-        ell = self.ell_array[jl]
-        chi_z = self.chi_array[jz]
-        k_ell = (ell + 0.5)/jnp.clip(chi_z, 1.0)
-        uk_min = jnp.min(jnp.absolute(self.uk_y[:,jz, jM]))
-        uk_clipped = jnp.clip(self.uk_y[:,jz, jM], uk_min + 1e-25)
-        uyl = jnp.exp(jnp.interp(jnp.log(k_ell), jnp.log(self.kPk_array), jnp.log(uk_clipped))) 
-        Bl = jnp.exp(-1. * ell * (ell + 1) * (self.sig_beam ** 2) / 2.)
-        return uyl * Bl
-
     @partial(jit, static_argnums=(0,))
     def get_byl(self, jl, jz):
         uyl_intc = self.uyl_mat_tointp[jl, jz, :]     
@@ -495,22 +477,8 @@ class get_cov(get_Cl):
         return fx_intz    
 
     @partial(jit, static_argnums=(0,))
-    def get_Pkyy_lz(self, jl, jz):
-        ell = self.ell_array[jl]
-        chi_z = self.chi_array[jz]
-        Bl = jnp.exp(-1. * ell * (ell + 1) * (self.sig_beam ** 2) / 2.)
-        k_ell = (ell + 0.5)/jnp.clip(chi_z, 1.0)
-        Pkz_ell = jnp.exp(jnp.interp(jnp.log(k_ell), jnp.log(self.kPk_array), jnp.log(self.Pyy_tot_kz_mat[:,jz])))
-        return (Bl**2)*Pkz_ell
-
-    @partial(jit, static_argnums=(0,))
     def get_ukl_interp(self, jl, jM):
         val = jnp.interp(self.z_array_for_Cls, self.z_array, self.ukappal_dmb_prefac_mat_tointp[jl,:,jM])
-        return val
-
-    @partial(jit, static_argnums=(0,))
-    def get_uyl_interp(self, jl, jM):
-        val = jnp.interp(self.z_array_for_Cls, self.z_array, self.uyl_mat_tointp[jl,:,jM])
         return val
 
     @partial(jit, static_argnums=(0,))
@@ -530,12 +498,6 @@ class get_cov(get_Cl):
         prefac_for_uk_tile = jnp.tile(prefac_for_uk[None,:,None], (self.ukappal_dmb_prefac_mat.shape[0], 1, self.ukappal_dmb_prefac_mat.shape[2]))
         return prefac_for_uk_tile *  self.ukappal_dmb_prefac_mat
     
-    @partial(jit, static_argnums=(0,))
-    def get_uy_l_forcov(self):
-        Wk_jb = self.Wy_array
-        prefac_for_uk = Wk_jb/(self.chi_array_for_Cls**2)
-        prefac_for_uk_tile = jnp.tile(prefac_for_uk[None,:,None], (self.uyl_mat.shape[0], 1, self.uyl_mat.shape[2]))
-        return prefac_for_uk_tile *  self.uyl_mat
 
     @partial(jit, static_argnums=(0,))
     def get_ug_l_forcov(self, jb):
@@ -549,20 +511,6 @@ class get_cov(get_Cl):
         val = jnp.interp(self.z_array_for_Cls, self.z_array, self.hmf_Mz_mat[:,jM])
         return val
 
-    @partial(jit, static_argnums=(0,))
-    def get_Cl_y_y_tot(self, jl):
-        """
-        Computes the 2-halo term of the cross-spectrum between the convergence of two bins (dmb only).
-        """
-        # Wy = self.Wy_array
-        Pk = jnp.exp(self.logPkyylz_2d_interp(jnp.log(self.ell_array[jl]), self.z_array_for_Cls))
-        Wy_array = (1.0 / (1.0 + self.z_array_for_Cls))
-        # prefac_for_uy = Wy/(self.chi_array_for_Cls**2)
-        prefac = Wy_array / (self.chi_array_for_Cls**2)
-        
-        fx = prefac * prefac  * (self.chi_array_for_Cls ** 2) * self.dchi_dz_array_for_Cls * Pk
-        fx_intz = jsi.trapezoid(fx, x=self.z_array_for_Cls)
-        return fx_intz
 
     def get_cov_G(
             self, bin1_stat1, bin2_stat1, bin1_stat2, bin2_stat2, stats_analyze_1, stats_analyze_2, Cl_result_dict,

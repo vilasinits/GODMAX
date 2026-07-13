@@ -65,6 +65,8 @@ class Profiles(base_class):
         
         if self.model_tSZ:
             self.run_pressure_calc()
+            if not self.baryonification_tSZ:
+                self.run_pressure_calc_nfw()
 
     def timing_decorator(func):
         """Decorator to time a function if the instance or class enables timing."""
@@ -171,7 +173,10 @@ class Profiles(base_class):
         rmax_grid = float(self.r_array[-1])
         rt_max = float(jnp.max(self.rt_mat))
         rej_max = float(jnp.max(self.r_ej_mat))
-        r_needed = max(rt_max, rej_max)
+        # The tSZ pressure (get_Ptot / get_Ptot_nfw) is integrated out to 6*r200c, so the y3d
+        # profile needs the grid to reach at least there for Y3D not to be truncated.
+        rpress_max = 6.0 * float(jnp.max(self.r200c_mat)) if self.model_tSZ else 0.0
+        r_needed = max(rt_max, rej_max, rpress_max)
         if rmax_grid < r_needed:
             warnings.warn(
                 f"FFTLog grid under-covers the halo profiles: rmax (r_array[-1]) = {rmax_grid:.3g} Mpc "
@@ -337,9 +342,14 @@ class Profiles(base_class):
         """Get the final total matter profiles - optimized."""
         # Calculate combined density in one operation
         self.rho_dmb_mat = self.rho_cga_mat + self.rho_clm_mat + self.rho_gas_mat
-        
+
         # Calculate mass profiles
         self.Mdmb_mat = get_vmapped_func(self.get_Mdmb, 3)(jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)).T
+
+        # Cumulative NFW-only enclosed mass on r_array (both -> Mtot at large r; mass is conserved
+        # between DMB and NFW). Used as the gravity leg of the gravity-only HSE pressure (get_Ptot_nfw).
+        if self.model_tSZ and not self.baryonification_tSZ:
+            self.Mnfw_mat = get_vmapped_func(self.get_Mnfw, 3)(jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)).T
 
     @timing_decorator
     def run_pressure_calc(self):
@@ -368,7 +378,35 @@ class Profiles(base_class):
         coeff = sigmat / (m_e * (c ** 2))
         oneMpc = (((10 ** 6)) * (u.pc).to(u.m)) * (u.m)
         const_coeff = (((coeff * oneMpc).to(((u.cm ** 3) / u.keV))).value)/(self.cosmo_params['H0']/100.)
+        self.y3d_const_coeff = const_coeff
         self.y3d_mat = const_coeff * self.Pe_mat_physical
+
+    @timing_decorator
+    def run_pressure_calc_nfw(self):
+        """Gravity-only (NFW) pressure -> y3d_nfw_mat, used when baryonification_tSZ is False.
+
+        HSE pressure from NFW on both legs (get_Ptot_nfw), with the non-thermal fraction set to
+        zero (fully thermal baseline). The result is then rescaled per (z, M) so that its
+        grid-integrated Compton-y Y3D = integral 4 pi r^2 y3d dr over r_array matches that of the
+        baryonified y3d_mat. This conserves the integrated Compton-y per halo (the tSZ analogue of
+        mass conservation), so uk_y_nfw(k->0) = uk_y(k->0) and the large-scale y-power ratio -> 1;
+        the toggle then isolates the profile-shape effect of baryons at smaller scales.
+
+        Requires run_pressure_calc to have run first (needs y3d_mat as the Y3D target)."""
+        Ptot_nfw_mat = get_vmapped_func(self.get_Ptot_nfw, 3)(jnp.arange(self.nr), jnp.arange(self.nz), jnp.arange(self.nM)).T
+        Ptot_nfw_physical = Ptot_nfw_mat / (self.scale_fac_a_array[None, :, None] ** 4)
+        # R_nt = 0: gravity-only baseline is fully thermal, so P_th = P_tot (no (1 - Pnt_fac) factor).
+        Pe_nfw_physical = Ptot_nfw_physical / 1.932
+        y3d_nfw_raw = self.y3d_const_coeff * Pe_nfw_physical
+
+        # Rescale to conserve Y3D per (z, M), matched over the SAME r_array grid the FFTLog integrates,
+        # so uk_y_nfw(k->0) == uk_y(k->0) exactly (large-scale ratio -> 1).
+        fourpi_r2 = 4.0 * jnp.pi * self.r_array[:, None, None] ** 2
+        Y3D_bary = jsi.trapezoid(fourpi_r2 * self.y3d_mat, x=self.r_array, axis=0)
+        Y3D_nfw = jsi.trapezoid(fourpi_r2 * y3d_nfw_raw, x=self.r_array, axis=0)
+        self.Y3D_bary_mat, self.Y3D_nfw_raw_mat = Y3D_bary, Y3D_nfw
+        scale = Y3D_bary / jnp.clip(Y3D_nfw, 1e-30)
+        self.y3d_nfw_mat = y3d_nfw_raw * scale[None, :, :]
 
     @partial(jit, static_argnums=(0,))
     def get_M_to_R(self, jz, jM, mdef_delta=200):
@@ -970,7 +1008,28 @@ class Profiles(base_class):
         # there is a factor of h^2 as dP = -G * rho_g * M(<r)/r^2 dr ~ G * M^2/r^4 and both mass and r are in the units of little h
         Ptot = jnp.clip(Ptot, 1e-30) * (self.cosmo_params['H0'] / 100.)**2
         return Ptot
-    
+
+    @partial(jit, static_argnums=(0,))
+    def get_Ptot_nfw(self, jr, jz, jM, r_array_here=None, rmax_r200c=6):
+        '''Gravity-only total pressure, assuming HSE with NFW on both legs of Eq. 14:
+        gas density -> (Ob0/Om0) * rho_nfw_normed (all baryons trace matter at the cosmic fraction),
+        enclosed mass -> M_nfw(<r) (unrelaxed, but -> Mtot at large r just like M_dmb). Mirrors
+        get_Ptot exactly apart from the two swapped legs.'''
+        if r_array_here is None:
+            r = self.r_array[jr]
+        else:
+            r = r_array_here[jr]
+        logx = jnp.linspace(jnp.log(r), jnp.log(rmax_r200c*self.r200c_mat[jz, jM]), self.num_points_trapz_int)
+        x = jnp.exp(logx)
+        fbar = self.cosmo_params['Ob0'] / self.cosmo_params['Om0']
+        fx1 = fbar * (vmap(self.get_rho_nfw_normed, (0, None, None, None))(jnp.arange(len(logx)), jz, jM, x))
+        # Floor the enclosed mass before log (innermost node -> 0; log(0) = -inf poisons the interp).
+        fx2 = jnp.exp(jnp.interp(logx, jnp.log(self.r_array), jnp.log(jnp.clip(self.Mnfw_mat[:, jz, jM], 1e-30))))
+        fx = (fx1 * fx2 * G_new / x**2) * x
+        Ptot = jsi.trapezoid(fx, x=logx)
+        Ptot = jnp.clip(Ptot, 1e-30) * (self.cosmo_params['H0'] / 100.)**2
+        return Ptot
+
     @partial(jit, static_argnums=(0,))
     def get_fz_Pnt(self, jz, rmax_r200c=6):
         '''This is the evolution of non-thermal pressure with redshift'''

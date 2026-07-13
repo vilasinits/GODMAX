@@ -310,6 +310,14 @@ class base_class:
         self.model_tSZ = analysis_dict.get('model_tSZ',True)
         # Weather to model the matter with full baryonic effects or just with halofit, for shear-2pt chains
         self.model_matter = analysis_dict.get('model_matter','DMB')
+        # Toggle baryonic thermodynamics in the tSZ (pressure) sector. True = full DMB-HSE pressure.
+        # False = gravity-only baseline: HSE pressure from NFW on both legs (M_nfw gravity,
+        # (Ob0/Om0)*rho_nfw gas), with R_nt=0, then rescaled to conserve Y3D per (z, M) so the
+        # large-scale y power ratio -> 1 (see run_pressure_calc_nfw). Independent of matter/galaxy toggles.
+        # Accept either spelling of the key (baryonification_tSZ / baryonification_tsz) so a casing
+        # typo does not silently leave the tSZ baryonification on.
+        self.baryonification_tSZ = analysis_dict.get(
+            'baryonification_tSZ', analysis_dict.get('baryonification_tsz', True))
 
         self.lowpass_Pmm1h_lowk = analysis_dict.get('lowpass_Pmm1h_lowk', True)
         self.kthresh_lowpass_Pmm1h_lowk = float(analysis_dict.get('kthresh_lowpass_Pmm1h_lowk', 1e-2))

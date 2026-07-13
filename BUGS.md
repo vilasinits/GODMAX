@@ -19,6 +19,17 @@ _(none yet — add as identified)_
 
 ## Fixed
 
+### B10 — FFTLog coverage check ignored the tSZ pressure radius (`6·r200c`) — `enhancement` — FIXED (warning extended)
+
+- **Where:** `src/get_radial_profiles.py` `setup_main_calc` (extends B8)
+- **Issue:** the B8 coverage warning tested `rmax` only against the truncation/ejection radii
+  (`rt`, `r_ej`). But the tSZ pressure (`get_Ptot` / `get_Ptot_nfw`) is integrated out to
+  `6·r200c`, so `y3d` needs the grid to reach at least there. If `rmax < 6·r200c` the
+  grid-integrated `Y3D = ∫4πr²y3d dr` is truncated — which silently biases the `baryonification_tSZ`
+  Y3D match (`y3d_nfw` rescaled to a truncated `Y3D_bary`).
+- **Fix:** include `rpress_max = 6·max(r200c)` in `r_needed` (only when `model_tSZ`). Diagnostic
+  only; no result change.
+
 ### B8 — FFTLog grid can under-cover the halo profiles (M3) — `enhancement` — FIXED (warning added)
 
 - **Where:** `src/get_radial_profiles.py` `setup_main_calc`

@@ -8,6 +8,40 @@ Each entry lists the commit hash, date, and every fix in that commit.
 
 ## [Unreleased]
 
+### (working tree, uncommitted) — 2026-07-13 — tSZ baryonification toggle + Pyy/uy refactor
+
+New `baryonification_tSZ` switch that turns the tSZ (pressure) sector between the full
+DMB-HSE pressure and a gravity-only NFW baseline, plus a refactor that moves the tSZ auto
+spectrum and l-space y-profile out of `get_covs` so they are available on plain `get_Cl`
+instances.
+
+- **`src/base_class.py`** — add `self.baryonification_tSZ` (default `True`). Accepts either
+  spelling (`baryonification_tSZ` / `baryonification_tsz`) so a casing typo cannot silently
+  leave the tSZ baryonification on.
+- **`src/get_radial_profiles.py`** — add `run_pressure_calc_nfw` / `get_Ptot_nfw`: gravity-only
+  HSE pressure with NFW on both legs (`M_nfw` gravity, `(Ob0/Om0)·rho_nfw` gas, `R_nt=0` →
+  fully thermal), rescaled per `(z, M)` so the grid-integrated `Y3D = ∫4πr²y3d dr` over
+  `r_array` matches the baryonified `y3d_mat`. This conserves Compton-y per halo, so
+  `uk_y_nfw(k→0)=uk_y(k→0)` and the large-scale y-power ratio → 1; the toggle then isolates the
+  profile-**shape** effect of baryons. `Mnfw_mat` is now precomputed on `r_array` (only when the
+  toggle is off), `y3d_const_coeff` is cached, and `run_pressure_calc_nfw` runs after
+  `run_pressure_calc` when `baryonification_tSZ` is False.
+- **`src/get_radial_profiles.py`** — B10: extend the FFTLog coverage check (B8) to require the
+  grid to reach `6·r200c`, since the tSZ pressure is integrated out to `6·r200c`; otherwise
+  `Y3D` is silently truncated for the toggle's Y3D match. Diagnostic only.
+- **`src/get_Pkzs.py`** — route the toggle through the y sector: `uk_y` is built from
+  `y3d_mat` or `y3d_nfw_mat`; the `Pym` matter leg follows it (gravity-only pressure pairs with
+  the NFW matter leg `bm_nfw` / 1-halo probe 1) so `Pym` stays a consistent cross-spectrum. The
+  tSZ auto power (`Pyy_1h` / `Pyy_2h` / `Pyy_tot_kz_mat`) is now computed here (moved from
+  `get_covs`) as the plain `1h+2h` sum, reproducing the prior covariance behaviour exactly.
+- **`src/get_Cls.py`** — move the l-space y machinery here (`get_uyl`, `get_uyl_interp`,
+  `get_uy_l_forcov`, and the `uyl_mat_tointp` / `uyl_mat` / `uy_l_for_cov` arrays) and compute the
+  tSZ auto Cl here (`get_Pkyy_lz`, `get_Cl_y_y_tot`, `Cl_y_y_tot_mat`), so `Cl_y_y_tot_mat` is
+  available on any `get_Cl` instance alongside the other Cls.
+- **`src/get_covs.py`** — delete the now-duplicated Pyy/uy definitions; `get_cov` inherits
+  `Pyy_tot_kz_mat`, `Pkyy_lz_mat`, `logPkyylz_2d_interp`, `Cl_y_y_tot_mat`, `uyl_mat_tointp`,
+  `uyl_mat`, and `uy_l_for_cov` unchanged. No result change to the covariance.
+
 ### (this commit) — 2026-07-09 — r-grid consistency: coverage warning (M3) and minr floor (M2)
 
 - **`src/get_radial_profiles.py`** — B8/M3: warn at init when the FFTLog grid under-covers
