@@ -8,7 +8,25 @@ Each entry lists the commit hash, date, and every fix in that commit.
 
 ## [Unreleased]
 
-### (working tree, uncommitted) — 2026-07-13 — tSZ baryonification toggle + Pyy/uy refactor
+### (working tree, uncommitted) — 2026-07-13 — Restructure into a src-layout `godmax` package
+
+- **Repo layout** — move the flat `src/*.py` modules and the `helpers` / `mcfitjax`
+  subpackages into a single importable package `src/godmax/` (src-layout). Add
+  `__init__.py` for the package and both subpackages; the top-level `godmax` namespace
+  re-exports the core chain (`Profiles`, `get_Pkz`, `get_Cl`, `get_cov`, `get_xi`).
+- **Imports** — rewrite all intra-package imports to `godmax.`-absolute
+  (`from get_Cls import ...` → `from godmax.get_Cls import ...`, `import helpers.constants`
+  → `import godmax.helpers.constants`, `from mcfitjax.transforms import ...` →
+  `from godmax.mcfitjax.transforms import ...`).
+- **`pyproject.toml`** — adopt the `extract-yy` build config: setuptools src-layout
+  (`package-dir "" = "src"`, `packages.find where = ["src"]`), pinned scientific deps
+  (numpy/scipy/jax/…), Python ≥ 3.9. `pip install -e .` now exposes `import godmax`.
+- **`archive/`** — relocate the old scratch code (`src/arxiv`) and notes
+  (`src/context`) out of the package tree so `src/` contains only `godmax`.
+- Note: `notebooks/` and `run_scripts/` still use flat `sys.path` imports and need
+  updating to `from godmax.… import …` separately.
+
+### (committed `bbae9dc`) — 2026-07-13 — tSZ baryonification toggle + Pyy/uy refactor
 
 New `baryonification_tSZ` switch that turns the tSZ (pressure) sector between the full
 DMB-HSE pressure and a gravity-only NFW baseline, plus a refactor that moves the tSZ auto
