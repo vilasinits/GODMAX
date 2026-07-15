@@ -110,11 +110,35 @@ class get_Pkz(Profiles):
         else: self.uk_clm_tointp, self.uk_ne_tointp = jnp.zeros((1,1,1)), jnp.zeros((1,1,1))
                         
         if self.model_tSZ:
-            # tSZ toggle: baryonified DMB-HSE pressure (y3d_mat) or the gravity-only NFW baseline
-            # (y3d_nfw_mat, Y3D-matched so uk_y(k->0) is unchanged -> large-scale y ratio -> 1).
-            y3d_for_uk = self.y3d_mat if self.baryonification_tSZ else self.y3d_nfw_mat
-            self.k_mcfit, uk_y = xi2P_obj(y3d_for_uk, axis=0, extrap=False)
-            self.uk_y_tointp = jnp.array(uk_y)
+            # tSZ toggle: baryonified DMB-HSE pressure (y3d_mat) or the gravity-only NFW baseline.
+            #
+            # OLD (real-space Y3D match only) -- commented out: matched the k=0 monopole
+            # Y3D = int 4 pi r^2 y3d dr (run_pressure_calc_nfw), assuming uk_y_nfw(k->0) == uk_y(k->0).
+            # But the pipeline never reaches k=0: the lowest FFTLog wavenumber is k_mcfit[0]
+            # (~0.05 h/Mpc for rmax=16) and get_uk_from_interp_Pk clamps everything below it flat,
+            # while large-scale yy (l~10) probes k~0.008 << k_mcfit[0]. Equal real-space Y3D does
+            # NOT give equal uk_y at k_mcfit[0] (finite-k Bessel weighting differs for the
+            # extended-baryonified vs concentrated-NFW shapes), so the large-scale yy toggle ratio
+            # drifted from 1 (measured ~1.35 for equal-Y3D toy shapes).
+            #     y3d_for_uk = self.y3d_mat if self.baryonification_tSZ else self.y3d_nfw_mat
+            #     self.k_mcfit, uk_y = xi2P_obj(y3d_for_uk, axis=0, extrap=False)
+            #     self.uk_y_tointp = jnp.array(uk_y)
+            #
+            # NEW: rematch the NFW baseline in k-space at the lowest accessible bin k_mcfit[0].
+            # A constant real-space rescale of y3d scales uk_y(k) uniformly at every k, so setting
+            # scale = uk_y_bary(k_mcfit[0]) / uk_y_nfw(k_mcfit[0]) forces uk_y_nfw == uk_y_bary on the
+            # clamped large-scale floor (k <= k_mcfit[0]) -> yy toggle ratio -> 1 exactly there,
+            # while leaving the small-scale profile shape (the actual baryon signal) untouched.
+            if self.baryonification_tSZ:
+                self.k_mcfit, uk_y = xi2P_obj(self.y3d_mat, axis=0, extrap=False)
+                self.uk_y_tointp = jnp.array(uk_y)
+            else:
+                self.k_mcfit, uk_y_bary = xi2P_obj(self.y3d_mat,     axis=0, extrap=False)
+                _,            uk_y_nfw  = xi2P_obj(self.y3d_nfw_mat, axis=0, extrap=False)
+                # match the k_mcfit[0] bin per (z, M); clip guards the (rare) empty-profile case.
+                kspace_scale = uk_y_bary[0] / jnp.clip(uk_y_nfw[0], 1e-30)
+                uk_y = uk_y_nfw * kspace_scale[None, ...]
+                self.uk_y_tointp = jnp.array(uk_y)
         else: self.uk_y_tointp = jnp.zeros((1,1,1))
                        
 

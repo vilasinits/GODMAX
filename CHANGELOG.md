@@ -8,6 +8,31 @@ Each entry lists the commit hash, date, and every fix in that commit.
 
 ## [Unreleased]
 
+### (working tree, uncommitted) — 2026-07-15 — tSZ toggle large-scale yy conservation (k-space rematch) + fstar_sat log(10) factor
+
+- **`src/godmax/get_Pkzs.py`** — fix the `baryonification_tSZ` toggle so the gravity-only NFW
+  baseline conserves the large-scale (k→0) tSZ auto power. The old path Y3D-matched the NFW
+  baseline in **real space** (`run_pressure_calc_nfw`, k=0 monopole), assuming
+  `uk_y_nfw(k→0) == uk_y(k→0)`. But the pipeline never reaches k=0: the lowest FFTLog bin is
+  `k_mcfit[0] ≈ 0.046 h/Mpc` (for `rmax=16`) and `get_uk_from_interp_Pk` clamps `uk_y` flat
+  below it, while large-scale yy (ℓ~10) probes k~0.008 ≪ k_mcfit[0]. Equal real-space Y3D does
+  NOT give equal `uk_y` at k_mcfit[0] (finite-k Bessel weighting differs for extended-baryonified
+  vs concentrated-NFW shapes) — a toy pair with identical Y3D gave `uk` ratio 1.16 → Pyy 1.35.
+  Now rematch the NFW baseline in **k-space** at k_mcfit[0]: transform both `y3d_mat` and
+  `y3d_nfw_mat`, scale the NFW `uk_y` by `uk_y_bary[0]/uk_y_nfw[0]` per (z, M). A constant
+  real-space rescale scales `uk_y` uniformly at all k, so matching the lowest bin forces
+  `uk_y_nfw == uk_y_bary` on the clamped floor while leaving the small-scale baryon signal
+  untouched. Old real-space selection kept commented out with rationale.
+  - Verified: 3D `Pyy` ratio (bary/nfw) is now `1.0000` for k ≤ 0.046 and deviates only at
+    k ≳ 0.1 (0.71 at k=0.88). Note: the projected `Cl_yy` large-scale ratio does NOT reach 1
+    (the 1/χ² Limber weight upweights low z, where even ℓ=10 samples k above the matched
+    floor) — intrinsic to the yy projection, not a residual bug.
+- **`src/godmax/get_radial_profiles.py`** — `run_pressure_calc_nfw`: note added that the Y3D
+  rescale is superseded for the observable large-scale limit by the k-space rematch in
+  `get_Pkzs`; it now only sets a sensible absolute amplitude for `y3d_nfw_mat`.
+- **`src/godmax/get_radial_profiles.py`** — `get_fstar_sat`: multiply the satellite stellar-mass
+  integral `val2` by `ln(10)` so the `d ln M` trapezoid carries the correct log-base factor.
+
 ### (working tree, uncommitted) — 2026-07-13 — Restructure into a src-layout `godmax` package
 
 - **Repo layout** — move the flat `src/*.py` modules and the `helpers` / `mcfitjax`

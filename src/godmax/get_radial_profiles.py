@@ -399,8 +399,13 @@ class Profiles(base_class):
         Pe_nfw_physical = Ptot_nfw_physical / 1.932
         y3d_nfw_raw = self.y3d_const_coeff * Pe_nfw_physical
 
-        # Rescale to conserve Y3D per (z, M), matched over the SAME r_array grid the FFTLog integrates,
-        # so uk_y_nfw(k->0) == uk_y(k->0) exactly (large-scale ratio -> 1).
+        # Rescale to conserve the real-space Y3D monopole per (z, M) over the r_array grid.
+        # NOTE: this k=0 monopole match is NO LONGER the operative large-scale normalisation.
+        # The pipeline never reaches k=0 (lowest FFTLog bin k_mcfit[0] ~ 0.05 h/Mpc, clamped flat
+        # below), and equal Y3D != equal uk_y at k_mcfit[0]. get_Pkzs now REMATCHES the NFW
+        # baseline in k-space at k_mcfit[0] (see the tSZ-toggle block there), which supersedes the
+        # `scale` set here for the observable large-scale limit. This Y3D scale is kept only to give
+        # y3d_nfw_mat a sensible absolute amplitude before that k-space rematch.
         fourpi_r2 = 4.0 * jnp.pi * self.r_array[:, None, None] ** 2
         Y3D_bary = jsi.trapezoid(fourpi_r2 * self.y3d_mat, x=self.r_array, axis=0)
         Y3D_nfw = jsi.trapezoid(fourpi_r2 * y3d_nfw_raw, x=self.r_array, axis=0)
@@ -798,7 +803,7 @@ class Profiles(base_class):
         Nsat_mat = get_vmapped_func(get_Nsat, 3)(jnp.array([jz]), jnp.array([jM]), jnp.log10(Mthresh_array)).T
 
         val1 = (Nsat_mat[0,0,-1]*Mthresh_array[-1] - Nsat_mat[0,0,0]*Mthresh_array[0])
-        val2 = jsi.trapezoid(Nsat_mat[0,0,:]*Mthresh_array, x=jnp.log(Mthresh_array))
+        val2 = jnp.log(10) * jsi.trapezoid(Nsat_mat[0,0,:]*Mthresh_array, x=jnp.log(Mthresh_array))
         Mstar_sat = val2 - val1
         Mtot = self.Mtot_mat[jz, jM]
         result = jnp.clip(Mstar_sat / Mtot, 0, 0.49*self.Ob0/self.Om0)  # Cap at cosmic baryon fraction
