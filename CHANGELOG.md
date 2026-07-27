@@ -8,7 +8,48 @@ Each entry lists the commit hash, date, and every fix in that commit.
 
 ## [Unreleased]
 
+### (working tree, uncommitted) — 2026-07-17 — tSZ toggle redefined as single physical switch; all cross-branch matching removed
+
+Redefine `baryonification_tSZ` as one physically defined switch:
+**True** = full baryonic tSZ model (baryonified gas density, DMB gravitational
+potential, nonthermal pressure via `P_th = P_tot·(1 − R_nt)`);
+**False** = fully thermal NFW reference (gas traces NFW as `fgas·rho_nfw`, NFW
+gravitational potential, `P_th = P_tot`). The branches are now fully independent —
+no Y3D matching, no k-space rematch, no separate nonthermal toggle. Integrated
+Compton-Y is *not* conserved between branches (feedback/ejection/nonthermal support
+genuinely change the thermal energy), so the amplitude difference is part of the
+physical signal. Run the pipeline twice (flag True/False) to compare.
+
+- **`src/godmax/get_radial_profiles.py`** — `__init__` now runs exactly one pressure
+  branch (`run_pressure_calc` **or** `run_pressure_calc_nfw`, no longer both) after a
+  new shared `setup_tsz_conversion()` that owns `y3d_const_coeff` (previously set inside
+  `run_pressure_calc`, making the NFW branch depend on the baryonified branch having run).
+  Both branches now set the same active outputs (`Ptot_mat_physical`, `Pe_mat_physical`,
+  `y3d_mat`) plus explicit branch-specific copies (`*_bary_*` / `*_nfw_*`,
+  `Pnt_fac_bary_mat`). **Deleted** the Y3D rescale block in `run_pressure_calc_nfw`
+  (`Y3D_bary/Y3D_nfw` per-(z,M) scale) and the "tSZ analogue of mass conservation" claim;
+  a diagnostic `Y3D_active_mat` (grid-integrated Compton-Y of the active branch, no
+  cross-branch normalization) is stored instead.
+- **`src/godmax/get_Pkzs.py`** — **deleted** the k-space low-k rematch (the
+  `uk_y_bary[0]/uk_y_nfw[0]` scale at `k_mcfit[0]`, incl. `kspace_scale_y`). The FFTLog
+  transform is now applied directly to the active `y3d_mat`; both the 1-halo and 2-halo
+  yy terms consume the same selected kernel through `uk_y_tointp` as before. `Pyy_tot`
+  remains the plain `1h + 2h` sum with no matter-response multiplication.
+- **`src/godmax/base_class.py`** — flag comment updated to the new ON/OFF definition.
+- **`param_files/params_default.yaml`** — `baryonification_tSZ` now documented and set
+  explicitly in the `analysis` section.
+- **`tests/test_tsz_toggle.py`** (new) — validation tests: OFF is fully thermal
+  (`Pe == Ptot/1.932`); ON includes nonthermal support
+  (`Pe == Ptot·max(0, 1 − R_nt)/1.932`); branch independence (each run computes only its
+  own branch); no forced Y normalization between branches; OFF is bit-for-bit insensitive
+  to `alpha_nt` while ON is sensitive. All 6 pass; `get_Pkz` smoke-runs clean in both
+  toggle states.
+
 ### (working tree, uncommitted) — 2026-07-15 — tSZ toggle large-scale yy conservation (k-space rematch) + fstar_sat log(10) factor
+
+> **Superseded** by the 2026-07-17 entry above: the k-space rematch (and the underlying
+> Y3D match) was removed — large-scale yy equality between the branches is no longer a
+> design goal; the amplitude difference is the physical baryonification signal.
 
 - **`src/godmax/get_Pkzs.py`** — fix the `baryonification_tSZ` toggle so the gravity-only NFW
   baseline conserves the large-scale (k→0) tSZ auto power. The old path Y3D-matched the NFW

@@ -14,7 +14,7 @@ sim_params:
   epsilon_rt: 4.0
 
   # Parameters to estimate the ejection radius and its evolution with mass and redshift
-  theta_ej_0: 2.0
+  theta_ej_0: 1.0
   log10_Mstar0_theta_ej: 16.0
   nu_theta_ej_M: 0.0
   nu_theta_ej_z: 0.0
@@ -139,8 +139,8 @@ halo_params:
   zmax: 1.6
   nz: 22
 
-  lg10_Mmin: 11.5
-  lg10_Mmax: 15.5
+  lg10_Mmin: 10.5
+  lg10_Mmax: 16.5
   nM: 24
 
   kmin: 0.0001
@@ -161,6 +161,19 @@ analysis:
   backreaction: True
   model_galaxies: True
   model_tSZ: True
+  # tSZ pressure model:
+  #
+  # true:
+  #   baryonified gas density
+  #   DMB gravitational potential
+  #   nonthermal pressure included
+  #
+  # false:
+  #   gas traces NFW
+  #   NFW gravitational potential
+  #   fully thermal HSE pressure
+  #
+  baryonification_tSZ: True
   num_points_trapz_int: 32
   num_points_gal_cal: 32
   calc_nfw_only: True

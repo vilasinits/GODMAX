@@ -11,7 +11,7 @@ sim_params:
   log10_Mstar0_theta_ej: 16.0
 
 
-  theta_ej_0: 2.0
+  theta_ej_0: 1.0
   nu_theta_ej_M: -0.33
   nu_theta_ej_z: -1.22
   

@@ -110,36 +110,16 @@ class get_Pkz(Profiles):
         else: self.uk_clm_tointp, self.uk_ne_tointp = jnp.zeros((1,1,1)), jnp.zeros((1,1,1))
                         
         if self.model_tSZ:
-            # tSZ toggle: baryonified DMB-HSE pressure (y3d_mat) or the gravity-only NFW baseline.
-            #
-            # OLD (real-space Y3D match only) -- commented out: matched the k=0 monopole
-            # Y3D = int 4 pi r^2 y3d dr (run_pressure_calc_nfw), assuming uk_y_nfw(k->0) == uk_y(k->0).
-            # But the pipeline never reaches k=0: the lowest FFTLog wavenumber is k_mcfit[0]
-            # (~0.05 h/Mpc for rmax=16) and get_uk_from_interp_Pk clamps everything below it flat,
-            # while large-scale yy (l~10) probes k~0.008 << k_mcfit[0]. Equal real-space Y3D does
-            # NOT give equal uk_y at k_mcfit[0] (finite-k Bessel weighting differs for the
-            # extended-baryonified vs concentrated-NFW shapes), so the large-scale yy toggle ratio
-            # drifted from 1 (measured ~1.35 for equal-Y3D toy shapes).
-            #     y3d_for_uk = self.y3d_mat if self.baryonification_tSZ else self.y3d_nfw_mat
-            #     self.k_mcfit, uk_y = xi2P_obj(y3d_for_uk, axis=0, extrap=False)
-            #     self.uk_y_tointp = jnp.array(uk_y)
-            #
-            # NEW: rematch the NFW baseline in k-space at the lowest accessible bin k_mcfit[0].
-            # A constant real-space rescale of y3d scales uk_y(k) uniformly at every k, so setting
-            # scale = uk_y_bary(k_mcfit[0]) / uk_y_nfw(k_mcfit[0]) forces uk_y_nfw == uk_y_bary on the
-            # clamped large-scale floor (k <= k_mcfit[0]) -> yy toggle ratio -> 1 exactly there,
-            # while leaving the small-scale profile shape (the actual baryon signal) untouched.
-            if self.baryonification_tSZ:
-                self.k_mcfit, uk_y = xi2P_obj(self.y3d_mat, axis=0, extrap=False)
-                self.uk_y_tointp = jnp.array(uk_y)
-            else:
-                self.k_mcfit, uk_y_bary = xi2P_obj(self.y3d_mat,     axis=0, extrap=False)
-                _,            uk_y_nfw  = xi2P_obj(self.y3d_nfw_mat, axis=0, extrap=False)
-                # match the k_mcfit[0] bin per (z, M); clip guards the (rare) empty-profile case.
-                kspace_scale = uk_y_bary[0] / jnp.clip(uk_y_nfw[0], 1e-30)
-                uk_y = uk_y_nfw * kspace_scale[None, ...]
-                self.uk_y_tointp = jnp.array(uk_y)
-        else: self.uk_y_tointp = jnp.zeros((1,1,1))
+            # The tSZ branch is selected upstream (get_radial_profiles): y3d_mat is already
+            # the active profile — baryonified (with nonthermal support) or the fully thermal
+            # NFW reference. Transform it directly. No Y3D or low-k matching between the
+            # branches is applied: the tSZ field is not mass-normalized, integrated Compton-Y
+            # is not conserved under feedback/ejection/nonthermal support, and the amplitude
+            # difference between the branches is part of the physical baryonification signal.
+            self.k_mcfit, uk_y = xi2P_obj(self.y3d_mat, axis=0, extrap=False)
+            self.uk_y_tointp = jnp.array(uk_y)
+        else:
+            self.uk_y_tointp = jnp.zeros((1,1,1))
                        
 
         # Get the Fourier profiles uk's in the interpolated k array:
@@ -283,39 +263,111 @@ class get_Pkz(Profiles):
 
 
 
+    # @partial(jit, static_argnums=(0,))
+    # def get_uk_from_interp_Pk(self, jz, jM, probe):
+    #     '''Compute uk values based on the probe and interpolate over kPk_array.'''
+        
+    #     # Helper function to select uk_val based on the probe
+    #     def compute_uk_val(probe):
+    #         conditions = [
+    #             (probe == 0, jnp.clip(self.uk_dmb_tointp[:, jz, jM], 1e-30, 1)),
+    #             (probe == 1, jnp.clip(self.uk_nfw_tointp[:, jz, jM], 1e-30, 1)),
+    #             (probe == 2, jnp.clip(self.uk_clm_tointp[:, jz, jM], 1e-30, 1)),
+    #             (probe == 3, self.uk_y_tointp[:, jz, jM]),
+    #             (probe == 4, self.uk_ne_tointp[:, jz, jM]),
+    #         ]
+            
+    #         # Default value if no condition matches
+    #         uk_val = jnp.nan
+    #         for condition, value in conditions:
+    #             uk_val = jnp.where(condition, value, uk_val)
+    #         return uk_val
+
+    #     # Compute uk_val based on the probe
+    #     uk_val = compute_uk_val(probe)
+
+    #     # Perform interpolation in log space for stability. (A low-k power-law extrapolation
+    #     # was tried and reverted: once get_rho_clm conserves mass (B7), uk(k_mcfit[0]) ~ 1 for
+    #     # all profiles, so the plain clamped interp already gives the correct k->0 limit; the
+    #     # extrapolation instead drifted uk_dmb(k->0) off 1 and disturbed the DMB/halofit ratio.)
+    #     return jnp.exp(
+    #         jnp.interp(
+    #             jnp.log(self.kPk_array),
+    #             jnp.log(self.k_mcfit),
+    #             jnp.log(jnp.clip(uk_val, 1e-30, jnp.inf))
+    #         )
+    #     )
+
     @partial(jit, static_argnums=(0,))
     def get_uk_from_interp_Pk(self, jz, jM, probe):
-        '''Compute uk values based on the probe and interpolate over kPk_array.'''
-        
-        # Helper function to select uk_val based on the probe
-        def compute_uk_val(probe):
-            conditions = [
-                (probe == 0, jnp.clip(self.uk_dmb_tointp[:, jz, jM], 1e-30, 1)),
-                (probe == 1, jnp.clip(self.uk_nfw_tointp[:, jz, jM], 1e-30, 1)),
-                (probe == 2, jnp.clip(self.uk_clm_tointp[:, jz, jM], 1e-30, 1)),
-                (probe == 3, self.uk_y_tointp[:, jz, jM]),
-                (probe == 4, self.uk_ne_tointp[:, jz, jM]),
-            ]
-            
-            # Default value if no condition matches
-            uk_val = jnp.nan
-            for condition, value in conditions:
-                uk_val = jnp.where(condition, value, uk_val)
-            return uk_val
+        conditions = [
+            (
+                probe == 0,
+                jnp.clip(
+                    self.uk_dmb_tointp[:, jz, jM],
+                    1e-30,
+                    1.0,
+                ),
+            ),
+            (
+                probe == 1,
+                jnp.clip(
+                    self.uk_nfw_tointp[:, jz, jM],
+                    1e-30,
+                    1.0,
+                ),
+            ),
+            (
+                probe == 2,
+                jnp.clip(
+                    self.uk_clm_tointp[:, jz, jM],
+                    1e-30,
+                    1.0,
+                ),
+            ),
+            (
+                probe == 3,
+                self.uk_y_tointp[:, jz, jM],
+            ),
+            (
+                probe == 4,
+                self.uk_ne_tointp[:, jz, jM],
+            ),
+        ]
 
-        # Compute uk_val based on the probe
-        uk_val = compute_uk_val(probe)
+        uk_val = jnp.nan
+        for condition, value in conditions:
+            uk_val = jnp.where(condition, value, uk_val)
 
-        # Perform interpolation in log space for stability. (A low-k power-law extrapolation
-        # was tried and reverted: once get_rho_clm conserves mass (B7), uk(k_mcfit[0]) ~ 1 for
-        # all profiles, so the plain clamped interp already gives the correct k->0 limit; the
-        # extrapolation instead drifted uk_dmb(k->0) off 1 and disturbed the DMB/halofit ratio.)
-        return jnp.exp(
+        logk_target = jnp.log(self.kPk_array)
+        logk_source = jnp.log(self.k_mcfit)
+
+        # Existing positive log-amplitude interpolation.
+        positive_interp = jnp.exp(
             jnp.interp(
-                jnp.log(self.kPk_array),
-                jnp.log(self.k_mcfit),
-                jnp.log(jnp.clip(uk_val, 1e-30, jnp.inf))
+                logk_target,
+                logk_source,
+                jnp.log(
+                    jnp.clip(
+                        uk_val,
+                        1e-30,
+                        jnp.inf,
+                    )
+                ),
             )
+        )
+
+        # Preserve zero crossings and signs of the pressure transform.
+        signed_interp = jnp.interp(
+            logk_target,
+            logk_source,
+            uk_val,
+        )
+
+        return jnp.where(
+            jnp.logical_or(probe == 3, probe == 4),
+            signed_interp,
+            positive_interp,
         )
 
 
