@@ -377,6 +377,16 @@ class base_class:
         # Read the dedicated 'num_points_gal_cal' key (previously mis-keyed to 'num_points_trapz_int',
         # so the param-file value was silently ignored and this always mirrored num_points_trapz_int).
         self.num_points_gal_cal = analysis_dict.get('num_points_gal_cal', 32)
+        # Resolution of the halofit non-linear-scale search grid (B12). halofit_parameters
+        # locates R_nl by linear interpolation to sigma(R)=1 on this many log-spaced nodes,
+        # so d R_nl / d(cosmology) is piecewise-constant between them: the *value* converges
+        # by ~64 nodes but the *derivative* does not, and at 64 it is wrong in sign at some
+        # redshifts. Convergence is non-monotonic, as a staircase must be: at z=0.30,
+        # dC/dOm goes 64 -> -5.26, 128 -> +0.502, 256 -> +0.147, 512 -> +0.548, 1024 -> +0.545,
+        # so upstream jax_cosmo's 256 is not sufficient here. 512 tracks 1024 to ~1% at every
+        # pipeline redshift and costs ~51 ms per P(k,z) build (vs 2 ms at 64) against an
+        # ~11 s C_ell evaluation, i.e. ~0.5%.
+        self.num_points_halofit = int(analysis_dict.get('num_points_halofit', 512))
         
         self.calc_nfw_only = analysis_dict.get('calc_nfw_only', True)
         self.beam_fwhm_arcmin = analysis_dict.get('beam_fwhm_arcmin', 1.4)

@@ -85,7 +85,7 @@ def linear(cosmo, k, a, transfer_fn):
     return linear_matter_power(cosmo, k, a, transfer_fn)
 
 
-def halofit_parameters(cosmo, a, transfer_fn=tklib.Eisenstein_Hu, num_points=64):
+def halofit_parameters(cosmo, a, transfer_fn=tklib.Eisenstein_Hu, num_points=512):
     r"""Computes the non linear scale,
     effective spectral index,
     spectral curvature
@@ -95,6 +95,12 @@ def halofit_parameters(cosmo, a, transfer_fn=tklib.Eisenstein_Hu, num_points=64)
     logr = np.linspace(np.log(1e-4), np.log(1e1), num_points)
 
     # TODO: implement a better root finding algorithm to compute the non linear scale
+    # NOTE (B12): `interp` below is *linear*, so the located root is piecewise-linear in the
+    # node values and d R_nl / d(cosmology) is piecewise-*constant*, jumping whenever the
+    # sigma=1 crossing slides across a node. The value converges quickly (<1% by 64 nodes);
+    # the derivative does not converge at any resolution. Raising num_points shrinks the
+    # jumps but does not remove them -- a root solve with implicit-function derivatives
+    # (jax.lax.custom_root) is the actual fix. num_points also sets the Simpson steps below.
     @jax.vmap
     def R_nl(a):
         def int_sigma(logk):

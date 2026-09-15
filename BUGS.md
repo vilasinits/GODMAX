@@ -13,11 +13,69 @@ root cause, fix commit.
 
 ## Open
 
-_(none yet — add as identified)_
+### B13 — `halofit_parameters` returns `n_eff`/`C` for only the first scale factor — `bug` — OPEN (latent)
+
+- **Where:** `src/godmax/helpers/jax_cosmo_power.py` (`halofit_parameters`, return statement)
+- **Symptom:** called with an array of `a` of length > 1, the function either raises
+  `TypeError: Cannot concatenate arrays with different numbers of dimensions: got (1, N), (1,), (1,)`
+  or, where shapes happen to broadcast, silently returns single-redshift `n_eff`/`C`
+  alongside a full-length `k_nl`.
+- **Root cause:** `k_nl` is `jax.vmap`-ed over `a` and so has shape `(na,)`, but the return
+  statement is `np.array([k_nl, n_eff[0], C[0]])` — `n_eff` and `C` are computed for all `a`
+  (shape `(na,)`) and then indexed to element 0.
+- **Not affected:** the pipeline. `get_Pkzs.py` wraps the call in `vmap(..., (None, 0))`, so each
+  invocation sees a scalar `a` (`na == 1`) and the `[0]` is a no-op. Only a direct caller passing
+  an `a` array is bitten — which is the natural way to read the signature.
+- **Fix:** not applied; out of scope of B12. Returning `np.stack([k_nl, n_eff, C])` would do it,
+  but every call site assumes the current shape, so it needs changing together.
 
 ---
 
 ## Fixed
+
+### B12 — halofit non-linear scale: 64-node linear-interp root find destroys the cosmology derivative — `bug` — FIXED (resolution raised + made configurable)
+
+- **Where:** `src/godmax/helpers/jax_cosmo_power.py` (`halofit_parameters`), reached from
+  `src/godmax/get_Pkzs.py` whenever `model_matter == 'halofit'`
+- **Symptom:** halofit `C_ell` match a CCL reference to sub-percent in *amplitude*, but
+  `d ln P_nl / d Omega_m` is a **staircase in z**: smooth to z≈0.15, then discrete jumps at
+  z≈0.20, 0.70, 0.80, 1.05, of size O(0.1–0.2) — comparable to the CCL signal itself
+  (~-0.15 at k = 1/Mpc). Central differences do not converge under step refinement (at z=0.30
+  the value walks -0.085, -0.025, +0.095, +0.455, -0.126 as the step goes 2e-2 → 1e-3), while
+  CCL returns -0.087 at every step.
+- **Root cause:** the non-linear scale is located by *linear* interpolation to `sigma(R) = 1`
+  on `num_points` log-spaced nodes (`root = interp(1.0, sigma, logr)`), with `num_points`
+  hardcoded to **64** — upstream `jax_cosmo` uses 256. A linear interpolant makes the located
+  root piecewise-linear in the node values, so `d R_nl / d(cosmology)` is piecewise-**constant**
+  and jumps whenever the `sigma = 1` crossing slides across a node. The *value* converges fast
+  (`k_nl` at 64 is within 0.9% of the 1024-node result, `max |k_nl - linear fit| / k_nl = 3.6e-5`)
+  which is why amplitude checks pass; the *derivative* does not. At 64 nodes the derivative is
+  wrong in **sign** at some redshifts — at z = 0.30: `dk_nl/dOm = -1.650` (converged -0.122),
+  `dn_eff/dOm = -2.068` (converged +1.256), `dC/dOm = -5.258` (converged +0.545).
+  `num_points` also sets the Simpson steps for `sigma`, `n_eff` and `C`.
+- **Fix:** `num_points` is now read from `analysis_dict` as `num_points_halofit`
+  (`base_class.read_all_input`) and passed through in `get_Pkzs`; the signature default is
+  raised 64 → 512. Convergence is non-monotonic, as a staircase must be — at z = 0.30 `dC/dOm`
+  goes 64 → -5.26, 128 → +0.502, 256 → +0.147, 512 → +0.548, 1024 → +0.545 — so upstream's 256
+  is **not** sufficient and 512 is the smallest resolution tracking 1024 to ~1% at every
+  pipeline redshift. Cost is ~51 ms per `P(k,z)` build (2 ms at 64, 18 ms at 256) against an
+  ~11 s `C_ell` evaluation, i.e. ~0.5%.
+- **Verified:** RMS of `d lnP_nl/dOm` minus CCL's, over k = 0.05–2 /Mpc and z = 0–2, drops
+  **3.2950 → 0.0683** (typical |CCL `dlnP/dOm`| = 0.3184). The residual at 512 is a smooth
+  ~-0.03 offset, i.e. the genuine jax_cosmo-Takahashi2012 vs CCL-halofit implementation
+  difference, no longer a resolution artefact.
+- **Downstream effect:** this was the cause of the wide, low-side-skewed `Omega_m` posterior in
+  the dr1_cmbx GODMAX `ccl_mode` vs PyCCL comparison
+  (`notebooks/test_integration/compare_theory_cls.ipynb`); the scan agrees with PyCCL after the
+  fix. Note the earlier "unchanged by this fix" reading came from a kernel that had loaded a
+  different GODMAX checkout and was running unpatched code — check `godmax.__file__` before
+  concluding a source change had no effect.
+- **Not a full cure:** piecewise-constant is piecewise-constant at any resolution — `dC/dOm` at
+  z = 0 still shifts ~20% between 256/512/1024. z = 0 sits outside the pipeline grid
+  (`zmin = 0.01`), so this does not bite here, but the real fix is the one the existing `TODO`
+  asks for: a root solve carrying implicit-function derivatives
+  (`d logR*/dtheta = -(dsigma/dtheta)/(dsigma/dlogR)`, e.g. `jax.lax.custom_root`), which would
+  be exact at low `num_points` and cost less than 512 nodes.
 
 ### B10 — FFTLog coverage check ignored the tSZ pressure radius (`6·r200c`) — `enhancement` — FIXED (warning extended)
 

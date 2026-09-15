@@ -50,7 +50,7 @@ class get_cov(get_Cl):
 
 
         # tSZ auto-spectrum: Pyy_tot_kz_mat (Pyy_1h/2h/tot) is now computed in get_Pkzs and inherited
-        # here. Pkyy_lz_mat / logPkyylz_2d_interp / Cl_y_y_tot_mat are now computed in get_Cls and
+        # here. Pkyy_lz_mat / logPkyylz_2d_interp / Cl_y_y_{signal,noise,tot}_mat are now computed in get_Cls and
         # inherited here (get_Pyy_interp below still uses the inherited logPkyylz_2d_interp).
 
 
@@ -100,37 +100,24 @@ class get_cov(get_Cl):
         self.Cl_result_dict['dl_array_survey'] = dl_array_survey
         self.Cl_result_dict['yy'] = {}
         self.Cl_result_dict['yy']['bin_' + '0_0'] = {}
-        self.Cl_result_dict['yy']['bin_' + '0_0']['tot_ellsurvey'] = self.Cl_y_y_tot_mat
-        
-        yy_noise_ell_fname = analysis_dict.get('yy_noise_ell_fname',None)
-        yy_total_ell_fname = analysis_dict.get('yy_total_ell_fname',None)
+        # yy signal / noise / total now come from get_Cls (Cl_y_y_signal_mat, Cl_y_y_noise_mat,
+        # Cl_y_y_tot_mat = signal + noise), all defined on self.ell_array. The yy noise/total files
+        # are read there, so nothing is re-loaded or re-interpolated here.
+        if (len(l_array_survey) != len(self.ell_array)) or (not bool(jnp.allclose(jnp.asarray(l_array_survey), self.ell_array))):
+            raise ValueError(
+                "l_array_survey must equal ell_array: the yy (and all other) Cls are stored on "
+                "ell_array and are used directly, without interpolation onto a different survey grid."
+            )
+
+        self.Cl_result_dict['yy']['bin_' + '0_0']['tot_ellsurvey'] = self.Cl_y_y_signal_mat
+        self.Cl_result_dict['yy']['bin_' + '0_0']['noise_ellsurvey'] = self.Cl_y_y_noise_mat
+        self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_y_y_tot_mat
+        self.Cl_result_dict['yy']['bin_combs'] = [[0,0]]
+
         sigma_epsilon_SN_bins = analysis_dict.get('sigma_epsilon_SN_bins',jnp.zeros(self.nbins))
         neff_arcmin2_SN_bins = analysis_dict.get('neff_arcmin2_SN_bins',jnp.ones(self.nbins))
 
         nbar_lens_bins = analysis_dict.get('nbar_lens_bins',jnp.ones(self.nbins_lens))
-
-
-        if yy_total_ell_fname is not None:
-            ell_yy_tot, Cl_yy_tot = np.loadtxt(yy_total_ell_fname, unpack  = True)
-            log_Cl_yy_tot_interp = interpax.Interpolator1D(
-                jnp.log(ell_yy_tot), jnp.log(Cl_yy_tot + 1e-25), extrap=(math.log(Cl_yy_tot[0]), math.log(Cl_yy_tot[-1])))
-            # log_Cl_yy_tot_interp = interpax.Interpolator1D(
-            #     jnp.log(ell_yy_tot), jnp.log(Cl_yy_tot + 1e-25), extrap=-120)
-            Cl_yy_tot = jnp.exp(log_Cl_yy_tot_interp(jnp.log(l_array_survey)))
-            self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = Cl_yy_tot
-            print('Loaded up y-total file')
-        elif yy_noise_ell_fname is not None:
-            ell_yy_noise, Cl_yy_noise = np.loadtxt(yy_noise_ell_fname, unpack = True)
-            log_Cl_yy_noise_interp = interpax.Interpolator1D(
-                jnp.log(ell_yy_noise), jnp.log(jnp.abs(Cl_yy_noise)) + 1e-25, extrap=True
-            )
-            noise_yy = jnp.exp(log_Cl_yy_noise_interp(jnp.log(l_array_survey)))
-            self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['yy']['bin_0_0']['tot_ellsurvey'] + noise_yy
-        else:
-            # print a warning:
-            print('Warning: no yy-total or yy-noise file found')
-            self.Cl_result_dict['yy']['bin_' + '0_0']['tot_plus_noise_ellsurvey'] = self.Cl_result_dict['yy']['0_0']['tot_ellsurvey']
-        self.Cl_result_dict['yy']['bin_combs'] = [[0,0]]
 
 
         bin_combs_ky = []

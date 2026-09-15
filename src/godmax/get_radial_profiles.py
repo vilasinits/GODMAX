@@ -185,14 +185,29 @@ class Profiles(base_class):
         # gas out to ~theta_ej * r200c). If rmax < these for the heaviest/most-extended haloes,
         # the grid truncates the profile inside its own support, so _profile_grid_mass < Mtot
         # and the FFTLog u(k) shape is distorted for those haloes. Warn (does not change results).
-        rmax_grid = float(self.r_array[-1])
-        rt_max = float(jnp.max(self.rt_mat))
-        rej_max = float(jnp.max(self.r_ej_mat))
+        # This check is purely diagnostic, so it must never decide whether the
+        # model can be differentiated. Under jax.grad / jit these quantities are
+        # tracers and float() raises ConcretizationTypeError, which made the
+        # whole pipeline non-differentiable with respect to any parameter
+        # reaching r200c or r_ej -- Om0 and theta_ej_0 among them, i.e. exactly
+        # what a NUTS run samples. Skip the warning while tracing instead.
+        def _concrete(x):
+            """float(x), or None when x is a tracer (nothing concrete to check)."""
+            try:
+                return float(x)
+            except (jax.errors.ConcretizationTypeError, TypeError):
+                return None
+
+        rmax_grid = _concrete(self.r_array[-1])
+        rt_max = _concrete(jnp.max(self.rt_mat))
+        rej_max = _concrete(jnp.max(self.r_ej_mat))
         # The tSZ pressure (get_Ptot / get_Ptot_nfw) is integrated out to 6*r200c, so the y3d
         # profile needs the grid to reach at least there for Y3D not to be truncated.
-        rpress_max = 6.0 * float(jnp.max(self.r200c_mat)) if self.model_tSZ else 0.0
-        r_needed = max(rt_max, rej_max, rpress_max)
-        if rmax_grid < r_needed:
+        _r200c_max = _concrete(jnp.max(self.r200c_mat)) if self.model_tSZ else 0.0
+        rpress_max = None if _r200c_max is None else 6.0 * _r200c_max
+        _tracing = any(v is None for v in (rmax_grid, rt_max, rej_max, rpress_max))
+        r_needed = None if _tracing else max(rt_max, rej_max, rpress_max)
+        if not _tracing and rmax_grid < r_needed:
             warnings.warn(
                 f"FFTLog grid under-covers the halo profiles: rmax (r_array[-1]) = {rmax_grid:.3g} Mpc "
                 f"< max profile extent {r_needed:.3g} Mpc (rt_max = {rt_max:.3g}, r_ej_max = {rej_max:.3g}). "
