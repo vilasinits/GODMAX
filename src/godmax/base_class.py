@@ -170,6 +170,15 @@ class base_class:
             wa=0.
             )
         self.h = cosmo_params['H0'] / 100.
+        # Source of background and P(k): 'jax_cosmo' (GODMAX's own) or 'cloelib' (cloelib's JAX
+        # backend through CloelibCosmology, converted to h-units). cosmo_jax is built either
+        # way; it only holds the parameters on the cloelib path.
+        self.cosmology_backend = analysis_dict.get('cosmology_backend', 'jax_cosmo')
+        if self.cosmology_backend == 'cloelib':
+            from godmax.helpers.cloelib_cosmology import CloelibCosmology
+            self.cosmo_cloelib = CloelibCosmology.from_godmax_params(cosmo_params)
+        elif self.cosmology_backend != 'jax_cosmo':
+            raise ValueError(f"cosmology_backend must be 'jax_cosmo' or 'cloelib', got {self.cosmology_backend!r}")
         self.Om0 = cosmo_params['Om0']
         self.Ob0 = cosmo_params['Ob0']
         self.H0 = 100. * (u.km / (u.s * u.Mpc))
@@ -401,7 +410,7 @@ class base_class:
 
         self.is_cmb_lensing = analysis_dict.get('is_cmb_lensing', False)
         a_CMB = 1/(1 + 1100)
-        self.chi_CMB = radial_comoving_distance(self.cosmo_jax, a_CMB)
+        self.chi_CMB = self.comoving_distance(a_CMB)
         nz_info_dict = analysis_dict.get('nz_source_info_dict', None)
         try:
             self.nbins = nz_info_dict['nbins']
@@ -411,7 +420,7 @@ class base_class:
             self.nbins = 1
             self.z_array_nz = jnp.linspace(0.01, 1.5, 128)
             self.pzs_inp_mat_inp = jnp.array([jnp.ones_like(self.z_array_nz)])
-        self.chi_array_nz = radial_comoving_distance(self.cosmo_jax, 1.0 / (1.0 + self.z_array_nz))
+        self.chi_array_nz = self.comoving_distance(1.0 / (1.0 + self.z_array_nz))
 
         nz_info_dict = analysis_dict.get('nz_lens_info_dict', None)
         try:
@@ -458,16 +467,23 @@ class base_class:
     @timing_decorator
     def get_power_spectra_cosmo(self):
         """
-        Get the linear matter power spectra and comoving distances, growth etc using jax_cosmo at a defined k_array
+        Get the linear matter power spectra and comoving distances, growth etc from the cosmology backend at a defined k_array
         """
-        self.chi_array = radial_comoving_distance(self.cosmo_jax, self.scale_fac_a_array)
-        self.DA_array = angular_diameter_distance(self.cosmo_jax, self.scale_fac_a_array)
-        self.dchi_dz_array = (const.c.value * 1e-3) / bkgrd.H(self.cosmo_jax, self.scale_fac_a_array)
+        self.chi_array = self.comoving_distance(self.scale_fac_a_array)
+        if self.cosmology_backend == 'cloelib':
+            self.DA_array = self.cosmo_cloelib.angular_diameter_distance(self.z_array)
+            self.dchi_dz_array = self.cosmo_cloelib.dchi_dz(self.z_array)
+        else:
+            self.DA_array = angular_diameter_distance(self.cosmo_jax, self.scale_fac_a_array)
+            self.dchi_dz_array = (const.c.value * 1e-3) / bkgrd.H(self.cosmo_jax, self.scale_fac_a_array)
 
         if self.symbolic_pk:
             self.growth_array = symbolic_D(self.Om0, self.z_array)
             vmap_func =  vmap(symbolic_pklin,(None, None, None, None, None, 0, None))
             self.plin_kz_mat = vmap_func(self.Om0, self.cosmo_params['Ob0'], self.h, self.cosmo_params['ns'], self.cosmo_params['sigma8'], self.z_array, self.kPk_array).T
+        elif self.cosmology_backend == 'cloelib':
+            self.growth_array = self.cosmo_cloelib.growth_factor(self.z_array)
+            self.plin_kz_mat = self.cosmo_cloelib.linear_power(self.kPk_array, self.z_array)
         else:
             self.growth_array = bkgrd.growth_factor(self.cosmo_jax, self.scale_fac_a_array)
             self.plin_kz_mat = vmap(linear_matter_power,(None, None, 0))(self.cosmo_jax, self.kPk_array, self.scale_fac_a_array).T
@@ -476,6 +492,19 @@ class base_class:
         self.dchi_dz_array_for_Cls = jnp.exp(jnp.interp(self.z_array_for_Cls, self.z_array, jnp.log(self.dchi_dz_array)))
         self.growth_array_for_Cls = jnp.exp(jnp.interp(self.z_array_for_Cls, self.z_array, jnp.log(self.growth_array)))
         self.rhom_0 = self.get_rho_m(0.0)
+
+    def comoving_distance(self, a):
+        """Comoving distance [Mpc/h] at scale factor a, from the cosmology backend."""
+        if self.cosmology_backend == 'cloelib':
+            chi = self.cosmo_cloelib.comoving_distance(1.0 / jnp.atleast_1d(a) - 1.0)
+            return chi if jnp.ndim(a) else chi[0]
+        return radial_comoving_distance(self.cosmo_jax, a)
+
+    def Esqr(self, a):
+        """E(a)^2 = (H(a) / H0)^2 from the cosmology backend."""
+        if self.cosmology_backend == 'cloelib':
+            return self.cosmo_cloelib.Esqr(a)
+        return bkgrd.Esqr(self.cosmo_jax, a)
 
     @partial(jit, static_argnums=(0,))    
     def get_rho_m(self, z):

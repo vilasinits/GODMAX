@@ -157,6 +157,10 @@ class get_Pkz(Profiles):
         if self.symbolic_pk:
             vmap_func = vmap(symbolic_pkhalofit,(None, None, None, None, None, None, None, None, 0))
             self.phfit_kz_mat = vmap_func(self.kPk_array, self.plin_kz_mat, self.Om0, self.cosmo_params['Ob0'], self.h, self.cosmo_params['ns'], self.cosmo_params['sigma8'], self.z_array, jnp.arange(self.nz)).T
+        elif self.cosmology_backend == 'cloelib':
+            # cloelib's own halofit: its R_nl search uses a fixed 256-node grid, so
+            # num_points_halofit (B12) does not apply on this path.
+            self.phfit_kz_mat = self.cosmo_cloelib.nonlinear_power(self.kPk_array, self.z_array)
         else:
             hfit_params = vmap(partial(halofit_parameters, num_points=self.num_points_halofit),
                                (None, 0))(self.cosmo_jax, self.scale_fac_a_array).T

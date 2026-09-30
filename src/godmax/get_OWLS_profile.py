@@ -200,7 +200,7 @@ class LeBrun15(base_class):
 
     @partial(jit, static_argnums=(0,))
     def get_M_to_R(self, jM, jz, mdef_delta=200):
-        rho_c_z = constants.RHO_CRIT_0_KPC3 * bkgrd.Esqr(self.cosmo_jax,self.scale_fac_a_array[jz]) * 1e9
+        rho_c_z = constants.RHO_CRIT_0_KPC3 * self.Esqr(self.scale_fac_a_array[jz]) * 1e9
         rho_treshold = mdef_delta * rho_c_z
         R = (self.M_array[jM] * 3.0 / 4.0 / jnp.pi / rho_treshold)**(1.0 / 3.0)
         return R
@@ -234,7 +234,7 @@ class LeBrun15(base_class):
     def get_Pth(self, jr, jz, jM):
         P_fit = self.get_P_fit(jr, jz, jM)
 
-        rho_c_z = constants.RHO_CRIT_0_KPC3 * bkgrd.Esqr(self.cosmo_jax,self.scale_fac_a_array[jz]) * 1e9 * self.h**2        
+        rho_c_z = constants.RHO_CRIT_0_KPC3 * self.Esqr(self.scale_fac_a_array[jz]) * 1e9 * self.h**2        
         coeff = (const.G * (const.M_sun**2) / ((1.0 * u.Mpc)**4)).to((u.keV / (u.cm**3))).value
 
         Mval = self.M500c_mat[jM,jz]

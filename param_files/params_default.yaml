@@ -195,6 +195,9 @@ analysis:
   nbar_gal_comoving_val: 
     - 5e-4
 
+  # Background and P(k) source: jax_cosmo (GODMAX's own) or cloelib (cloelib's JAX backend, needs cloelib installed)
+  cosmology_backend: jax_cosmo
+
   is_cmb_lensing: True
   nz_source_info_dict:
     nbins: 1

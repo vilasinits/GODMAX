@@ -479,7 +479,7 @@ class Profiles(base_class):
 
     @partial(jit, static_argnums=(0,))
     def get_M_to_R(self, jz, jM, mdef_delta=200):
-        rho_c_z = constants.RHO_CRIT_0_KPC3 * bkgrd.Esqr(self.cosmo_jax,self.scale_fac_a_array[jz]) * 1e9
+        rho_c_z = constants.RHO_CRIT_0_KPC3 * self.Esqr(self.scale_fac_a_array[jz]) * 1e9
         rho_treshold = mdef_delta * rho_c_z
         R = (self.M_array[jM] * 3.0 / 4.0 / jnp.pi / rho_treshold)**(1.0 / 3.0)
         # convert to comoving coordinates
