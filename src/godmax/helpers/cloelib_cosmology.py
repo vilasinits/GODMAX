@@ -51,6 +51,23 @@ class CloelibCosmology:
         background.interface_args['JAXparams']['sigma_8'] = cosmo_params['sigma8']
         return cls(background, JAXLinearPerturbations(background), JAXNonLinearPerturbations(background))
 
+    def godmax_params(self):
+        """GODMAX ``sim_params['cosmo']`` dict of the wrapped cloelib cosmology.
+
+        sigma8 is the value cloelib's linear P(k) is normalised to, so GODMAX and cloelib
+        share one amplitude whatever the cloelib background was built from (As).
+        """
+        background = self.background
+        return {
+            'flat': True,
+            'H0': background.H0,
+            'Om0': background.Omega_b0 + background.Omega_cdm0,
+            'Ob0': background.Omega_b0,
+            'sigma8': self.linear.sigma8_0(),
+            'ns': background.ns,
+            'w0': background.w0,
+        }
+
     def comoving_distance(self, z):
         """Comoving distance [Mpc/h]."""
         return self.background.comoving_distance(jnp.atleast_1d(z)) * self.h

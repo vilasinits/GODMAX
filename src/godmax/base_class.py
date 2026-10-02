@@ -156,8 +156,16 @@ class base_class:
         Read all the input parameters from the input dictionaries and store them in the class.
         """
 
+        # A ready CloelibCosmology (wrapping the caller's own cloelib objects) can be passed as
+        # analysis_dict['cosmology_obj']. It selects the cloelib backend and supplies the
+        # cosmological parameters, so GODMAX cannot disagree with the cosmology it was handed.
+        cosmology_obj = analysis_dict.get('cosmology_obj', None)
+
         # Initialize the jax_cosmo cosmology
-        cosmo_params = sim_params_dict.get('cosmo', {'flat': True, 'H0': 67.2, 'Om0': 0.31, 'Ob0': 0.049, 'sigma8': 0.81, 'ns': 0.95, 'w0':-1.0})
+        if cosmology_obj is not None:
+            cosmo_params = cosmology_obj.godmax_params()
+        else:
+            cosmo_params = sim_params_dict.get('cosmo', {'flat': True, 'H0': 67.2, 'Om0': 0.31, 'Ob0': 0.049, 'sigma8': 0.81, 'ns': 0.95, 'w0':-1.0})
         self.cosmo_params = cosmo_params
         self.cosmo_jax = Cosmology(
             Omega_c=cosmo_params['Om0'] - cosmo_params['Ob0'],
@@ -173,8 +181,13 @@ class base_class:
         # Source of background and P(k): 'jax_cosmo' (GODMAX's own) or 'cloelib' (cloelib's JAX
         # backend through CloelibCosmology, converted to h-units). cosmo_jax is built either
         # way; it only holds the parameters on the cloelib path.
-        self.cosmology_backend = analysis_dict.get('cosmology_backend', 'jax_cosmo')
-        if self.cosmology_backend == 'cloelib':
+        self.cosmology_backend = analysis_dict.get(
+            'cosmology_backend', 'jax_cosmo' if cosmology_obj is None else 'cloelib')
+        if cosmology_obj is not None:
+            if self.cosmology_backend != 'cloelib':
+                raise ValueError(f"cosmology_obj requires cosmology_backend 'cloelib', got {self.cosmology_backend!r}")
+            self.cosmo_cloelib = cosmology_obj
+        elif self.cosmology_backend == 'cloelib':
             from godmax.helpers.cloelib_cosmology import CloelibCosmology
             self.cosmo_cloelib = CloelibCosmology.from_godmax_params(cosmo_params)
         elif self.cosmology_backend != 'jax_cosmo':
