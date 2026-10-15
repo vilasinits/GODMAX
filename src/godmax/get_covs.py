@@ -120,6 +120,7 @@ class get_cov(get_Cl):
         nbar_lens_bins = analysis_dict.get('nbar_lens_bins',jnp.ones(self.nbins_lens))
 
 
+
         bin_combs_ky = []
         bin_combs_kk = []        
         self.Cl_result_dict['ky'] = {}
@@ -401,8 +402,6 @@ class get_cov(get_Cl):
             self.covNG_dict[stats_analyze_1_ordered + '_' + stats_analyze_2_ordered] = covNG_stat12
             self.covtot_dict[stats_analyze_1_ordered + '_' + stats_analyze_2_ordered] = covtot_stat12
 
-
-    @partial(jit, static_argnums=(0,))
     @partial(jit, static_argnums=(0,))
     def get_byl(self, jl, jz):
         uyl_intc = self.uyl_mat_tointp[jl, jz, :]     

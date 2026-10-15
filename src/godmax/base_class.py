@@ -124,31 +124,6 @@ class base_class:
         integral_value = jsi.trapezoid(fx, x=logx)
         return integral_value
 
-    @staticmethod
-    def _build_grid_1d(spec):
-        """Build a 1D grid from a spec that is either [start, stop, n] (with integer n>3 -> linspace)
-        or an explicit list/array of values. Same [start, stop, n] shorthand used for
-        nbar_gal_comoving_zarray, so redshift-distribution grids parse consistently."""
-        if isinstance(spec, (list, tuple)) and len(spec) == 3 and isinstance(spec[2], int) and spec[2] > 3:
-            return jnp.linspace(spec[0], spec[1], spec[2])
-        return jnp.array(spec)
-
-    @staticmethod
-    def _build_pzs(nz_info_dict, nbins, z_grid):
-        """Build the (nbins, len(z_grid)) p(z) matrix. Each bin's 'nz<jb>' may be a full-length
-        array (used as-is) or a single scalar (broadcast to a flat distribution over z_grid)."""
-        n = len(z_grid)
-        pzs = np.zeros((nbins, n))
-        for jb in range(nbins):
-            nz_jb = np.atleast_1d(np.asarray(nz_info_dict['nz' + str(jb)], dtype=float))
-            if nz_jb.shape[0] == n:
-                pzs[jb, :] = nz_jb
-            elif nz_jb.shape[0] == 1:
-                pzs[jb, :] = nz_jb[0]
-            else:
-                raise ValueError(f"nz{jb} length {nz_jb.shape[0]} does not match z grid length {n}")
-        return jnp.array(pzs)
-
 
     @timing_decorator
     def read_all_input(self, sim_params_dict, halo_params_dict, analysis_dict=None, other_params_dict=None):
@@ -316,7 +291,7 @@ class base_class:
 
 
         self.conc_model = halo_params_dict.get('conc_model','Duffy08')
-        self.hmf_model = halo_params_dict.get('hmf_model', 'T08')
+        self.hmf_model = halo_params_dict.get('hmf_model', 'tinker08')
 
         self.ell_array = halo_params_dict.get('ell_array',None)
         if self.ell_array is None:
@@ -330,6 +305,13 @@ class base_class:
         self.backreaction = analysis_dict.get('backreaction', True)
         self.model_galaxies = analysis_dict.get('model_galaxies',True)
         self.model_tSZ = analysis_dict.get('model_tSZ',True)
+        self.clm_fourier_transform_method = analysis_dict.get(
+            'clm_fourier_transform_method', 'direct_shell'
+        )
+        if self.clm_fourier_transform_method not in ('direct_shell', 'legacy_fftlog'):
+            raise ValueError(
+                "clm_fourier_transform_method must be 'direct_shell' or 'legacy_fftlog'"
+            )
         # Weather to model the matter with full baryonic effects or just with halofit, for shear-2pt chains
         self.model_matter = analysis_dict.get('model_matter','DMB')
         # Single physical switch for the tSZ (pressure) sector.
@@ -344,6 +326,7 @@ class base_class:
         # typo does not silently leave the tSZ baryonification on.
         self.baryonification_tSZ = analysis_dict.get(
             'baryonification_tSZ', analysis_dict.get('baryonification_tsz', True))
+        self.hod_params_model = analysis_dict.get('hod_params_model', 'combined')
 
         self.lowpass_Pmm1h_lowk = analysis_dict.get('lowpass_Pmm1h_lowk', True)
         self.kthresh_lowpass_Pmm1h_lowk = float(analysis_dict.get('kthresh_lowpass_Pmm1h_lowk', 1e-2))
@@ -396,20 +379,14 @@ class base_class:
 
         # Controls the accuracy of the trapezoidal integration.
         self.num_points_trapz_int = analysis_dict.get('num_points_trapz_int', 64)
-        # Read the dedicated 'num_points_gal_cal' key (previously mis-keyed to 'num_points_trapz_int',
-        # so the param-file value was silently ignored and this always mirrored num_points_trapz_int).
-        self.num_points_gal_cal = analysis_dict.get('num_points_gal_cal', 32)
-        # Resolution of the halofit non-linear-scale search grid (B12). halofit_parameters
-        # locates R_nl by linear interpolation to sigma(R)=1 on this many log-spaced nodes,
-        # so d R_nl / d(cosmology) is piecewise-constant between them: the *value* converges
-        # by ~64 nodes but the *derivative* does not, and at 64 it is wrong in sign at some
-        # redshifts. Convergence is non-monotonic, as a staircase must be: at z=0.30,
-        # dC/dOm goes 64 -> -5.26, 128 -> +0.502, 256 -> +0.147, 512 -> +0.548, 1024 -> +0.545,
-        # so upstream jax_cosmo's 256 is not sufficient here. 512 tracks 1024 to ~1% at every
-        # pipeline redshift and costs ~51 ms per P(k,z) build (vs 2 ms at 64) against an
-        # ~11 s C_ell evaluation, i.e. ~0.5%.
+        self.num_points_gal_cal = analysis_dict.get('num_points_trapz_int', 32)
+        # Nodes of the halofit non-linear-scale search (and its Simpson steps). R_nl is found by linear
+        # interpolation to sigma(R)=1 on this grid, so d R_nl / d(cosmology) is piecewise constant in
+        # between nodes: the value converges by ~64 nodes, the derivative does not. At 64 the d/dOm of
+        # k_nl, C and ln P_nl are wrong by tens of percent; 512 is within ~2% of the grid-free result
+        # (notebooks/test-godmax/04_halofit_num_points_convergence.ipynb).
         self.num_points_halofit = int(analysis_dict.get('num_points_halofit', 512))
-        
+
         self.calc_nfw_only = analysis_dict.get('calc_nfw_only', True)
         self.beam_fwhm_arcmin = analysis_dict.get('beam_fwhm_arcmin', 1.4)
         self.sig_beam = self.beam_fwhm_arcmin * (1. / 60.) * (jnp.pi / 180.) * (1. / jnp.sqrt(8. * jnp.log(2)))
@@ -427,9 +404,12 @@ class base_class:
         nz_info_dict = analysis_dict.get('nz_source_info_dict', None)
         try:
             self.nbins = nz_info_dict['nbins']
-            self.z_array_nz = self._build_grid_1d(nz_info_dict['z_array_source'])
-            self.pzs_inp_mat_inp = self._build_pzs(nz_info_dict, self.nbins, self.z_array_nz)
-        except Exception:
+            self.z_array_nz = jnp.array(nz_info_dict['z_array_source'])
+            pzs_inp_mat = np.zeros((self.nbins, len(self.z_array_nz)))
+            for jb in range(self.nbins):
+                pzs_inp_mat[jb, :] = nz_info_dict['nz' + str(jb)]
+            self.pzs_inp_mat_inp = jnp.array(pzs_inp_mat)
+        except:
             self.nbins = 1
             self.z_array_nz = jnp.linspace(0.01, 1.5, 128)
             self.pzs_inp_mat_inp = jnp.array([jnp.ones_like(self.z_array_nz)])
@@ -438,13 +418,16 @@ class base_class:
         nz_info_dict = analysis_dict.get('nz_lens_info_dict', None)
         try:
             self.nbins_lens = nz_info_dict['nbins_lens']
-            self.z_array_nz_lens = self._build_grid_1d(nz_info_dict['z_array_lens'])
+            self.z_array_nz_lens = jnp.array(nz_info_dict['z_array_lens'])
             self.zmax_lens = self.z_array_nz_lens[-1]
-            self.pzs_inp_mat_inp_lens = self._build_pzs(nz_info_dict, self.nbins_lens, self.z_array_nz_lens)
+            pzs_inp_mat = np.zeros((self.nbins_lens, len(self.z_array_nz_lens)))
+            for jb in range(self.nbins_lens):
+                pzs_inp_mat[jb, :] = nz_info_dict['nz' + str(jb)]
+            self.pzs_inp_mat_inp_lens = jnp.array(pzs_inp_mat)
             self.z_edges_bins_lens = jnp.array(
                 nz_info_dict.get('z_edges_bins_lens', [[self.z_array_nz_lens[0], self.z_array_nz_lens[-1]]])
             )
-        except Exception:
+        except:
             self.nbins_lens = 1
             self.z_array_nz_lens = jnp.linspace(0.01, 1.5, 128)
             self.z_edges_bins_lens = jnp.array([[0.1, 1.5]])

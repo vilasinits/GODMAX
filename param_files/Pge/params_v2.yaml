@@ -7,11 +7,11 @@ sim_params:
     sigma8: 0.8
     ns: 0.96
     w0: -1.0
-     
+    
   log10_Mstar0_theta_ej: 16.0
 
 
-  theta_ej_0: 1.0
+  theta_ej_0: 2.0
   nu_theta_ej_M: -0.33
   nu_theta_ej_z: -1.22
   
@@ -90,7 +90,7 @@ sim_params:
 halo_params:
 
   rmin: 0.0005
-  rmax: 16.0
+  rmax: 20.0
   nr: 24
 
 
