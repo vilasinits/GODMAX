@@ -9,8 +9,6 @@ import pytest
 from godmax.get_Pkzs import get_Pkz
 
 
-@pytest.mark.xfail(strict=True, reason="14ae4e4 replaced the squeezed CMB-kernel stack with a plain vmap; "
-                                       "chi_CMB has shape (1,), so Wk_mat gains an axis and nbins > 1 fails")
 def test_cmb_lensing_with_two_source_bins(model):
     import numpy as np
     zs = np.linspace(0.01, 1.5, 128)
