@@ -211,16 +211,9 @@ analysis:
   nz_for_Cls: 128
 
   # Theta array for real-space correlation function logspace
-  #angles_data_array:
-  #  - 2.5
-  #  - 250
-  #  - 20
+  #angles_data_array: default jnp.logspace(jnp.log10(2.5), jnp.log10(250), 20
 
-  # k_array_survey:
-  #   - 0.0001
-  #   - 150.0
-  #   - 64
-
+  # k_array_survey: default to k_array
   # l_array_survey: default ell array
   # dl_array_survey: no default
 
@@ -241,15 +234,15 @@ analysis:
   # Ellipticity shear noise per bin
   sigma_epsilon_SN_bins:
     - 0.
-    - 0.
-    - 0.
-    - 0.
-    - 0.
   
   # Galaxy density shear noise per bin in arcmin^-2
   neff_arcmin2_SN_bins:
-    - 4.64
-    - 4.64
-    - 4.64
-    - 4.64
-    - 4.64
+    - 1.
+
+  # Galaxy shot noise: number density per bin in arcmin^-2
+  nbar_lens_bins:
+    - 1.
+  
+  # yy auto power spectrum
+  #yy_total_ell_fname: None
+  #yy_noise_ell_fname: None
