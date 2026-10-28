@@ -18,12 +18,14 @@ sim_params:
   log10_Mstar0_theta_ej: 16.0
   nu_theta_ej_M: 0.0
   nu_theta_ej_z: 0.0
+  nu_theta_ej_c: 0.0
 
   # Parameters to estiamte the core radius and its evolution with mass and redshift
   theta_co_0: 0.05
   log10_Mstar0_theta_co: 16.0
   nu_theta_co_M: 0.0
   nu_theta_co_z: 0.0
+  nu_theta_co_c: 0.0
 
   # Parameter to get the beta-slope parameter and its evolution with mass and redshift
   mu_beta: 0.6
@@ -46,57 +48,23 @@ sim_params:
   n_nt: 0.3
 
   # If you want to model proper galaxies, these are true (see the settings in the analysis section)
-  # You can also vary them per-redshift bin by providing arrays of values, i.e. add another entry in the array for each redshift bin
-  # In that case, set "hod_params_model: perbin" in the analysis setting and ensure that total entries here should be equal to number of redshift bins + 1, where:
-  # - the first entry corresponds to the default value (also used for z < zmin of first bin and z > zmax of last bin)
-  # - subsequent entries correspond to each redshift bin in order.
-  log10M1_fshmr_array: 
-    - 12.35
-
-  log10M1_a_fshmr_array: 
-    - 0.28
-
-  log10Mstar0_fshmr_array: 
-    - 10.72
-
-  log10Mstar0_a_fshmr_array: 
-    - 0.55
-
-  beta_fshmr_array: 
-    - 0.44
-
-  beta_a_fshmr_array: 
-    - 0.18
-
-  delta_fshmr_array: 
-    - 0.57
-
-  delta_a_fshmr_array: 
-    - 0.17
-
-  gamma_fshmr_array: 
-    - 1.56
-
-  gamma_a_fshmr_array: 
-    - 2.51
-
-  siglogMstar_Ncen_array: 
-    - 0.25
-
-  alphasat_Nsat_array: 
-    - 1.0
-
-  Bcut_Nsat_array: 
-    - 1.69
-
-  Bsat_Nsat_array: 
-    - 9.01
-
-  betacut_Nsat_array: 
-    - 0.6
-    
-  betasat_Nsat_array: 
-    - 0.74
+  log10M1_fshmr: 12.35
+  log10M1_a_fshmr: 0.28
+  log10Mstar0_fshmr: 10.72
+  log10Mstar0_a_fshmr: 0.55
+  beta_fshmr: 0.44
+  beta_a_fshmr: 0.18
+  delta_fshmr: 0.57
+  delta_a_fshmr: 0.17
+  gamma_fshmr: 1.56
+  gamma_a_fshmr: 2.51
+  siglogMstar_Ncen: 0.25
+  alphasat_Nsat: 1.0
+  Bcut_Nsat: 1.69
+  Bsat_Nsat: 9.01
+  betacut_Nsat: 0.6
+  betasat_Nsat: 0.74
+  fcen: 1.0 # ou fcen_array
 
   # If you want some simple stellar profiles, use these:
   eta_star: 0.3
@@ -106,14 +74,18 @@ sim_params:
 
 
 other_params:
+  # For intrinsic alignment
   A_IA: 0.1
   eta_IA: 0.1
   z0_IA: 0.62
   C1_rhocrit: 0.0134
 
+  # For the tSZ transition scaling between 1-halo and 2-halo
   alpha_ky: 1.0
   alpha_gy: 1.0
   alpha_gg: 1.0
+  alpha_gm: 1.0
+  alpha_ge: 1.0
 
   Delta_z_bias_array:
     - 0.0
@@ -154,11 +126,12 @@ halo_params:
   mdef_Delta: 200
   conc_model: Duffy08
   hmf_model: T10
-  do_corr_2h_mm: True
+  do_corr_2h_mm: True #correction 2-halo matter power spectrum
 
 
 analysis:
-  backreaction: True
+  backreaction: True #to account for baryonic physics
+  model_matter: DMB # DMB or halofit
   model_galaxies: True
   model_tSZ: True
   # tSZ pressure model:
@@ -174,31 +147,46 @@ analysis:
   #   fully thermal HSE pressure
   #
   baryonification_tSZ: True
+  hod_params_model: combined
+  is_cmb_lensing: False
+  
+  # For trapezoidal integration
   num_points_trapz_int: 32
   num_points_gal_cal: 32
   # Nodes of the halofit non-linear-scale search. Below ~256 the cosmology derivatives of P_halofit are
   # wrong by tens of percent (the value is fine); see notebooks/test-godmax/04_halofit_num_points_convergence.ipynb
   num_points_halofit: 512
+  
   calc_nfw_only: True
   beam_fwhm_arcmin: 1.6
-  verbose_time: False  
-  analysis_coords: fourier
-  tSZ_transition_model: poweradd
+  analysis_coords: fourier # fourier or real
+  #fac_ell_hres: 1.0 # if analysis_coord == real: control integration resolution
+  tSZ_transition_model: poweradd # poweradd or response
   gg_transition_model: poweradd
-  hod_params_model: combined
+  galaxy_matter_transition_model: poweradd
+  galaxy_electron_transition_model: poweradd
+  symbolic_hmf: False
+  symbolic_pk: False
+
+  verbose_time: False  
+  verbose_cov: False
+  plot_cov: False
+
   lowpass_Pmm1h_lowk: True
-  kthresh_lowpass_Pmm1h_lowk: 1e-3
+  kthresh_lowpass_Pmm1h_lowk: 1e-2
 
-  split_cga_fftlog: True
-
+  # Galaxy number density z,N(z) comoving to get M_star_threshold for the HOD
   nbar_gal_comoving_zarray:
     - 0.01
     - 2.0
     - 64
-  nbar_gal_comoving_val: 
-    - 5e-4
+  nbar_gal_comoving_val: 0.0
+  nbar_gal_comoving_zarray: 
+    - 0.01
+    - 2.0
+    - 64
 
-  is_cmb_lensing: True
+  # WL N(z) parameters
   nz_source_info_dict:
     nbins: 1
     z_array_source:
@@ -207,12 +195,10 @@ analysis:
       - 128
     nz0:
       - 1.0
-      
+  
+  # GC N(z) parameters
   nz_lens_info_dict:
     nbins_lens: 1
-    z_edges_lens:
-      - 0.01
-      - 1.5
     z_array_lens:
       - 0.01
       - 1.5
@@ -224,22 +210,19 @@ analysis:
   zmax_for_Cls: 1.6
   nz_for_Cls: 128
 
-  angles_data_array:
-    - 2.5
-    - 250
-    - 20
+  # Theta array for real-space correlation function logspace
+  #angles_data_array: default jnp.logspace(jnp.log10(2.5), jnp.log10(250), 20
 
-  # k_array_survey:
-  #   - 0.0001
-  #   - 150.0
-  #   - 64
+  # k_array_survey: default to k_array
+  # l_array_survey: default ell array
+  # dl_array_survey: no default
 
-  fsky_yy: 0.4
-  fsky_ky: 0.437
-  fsky_kk: 0.437
-  fsky_yg: 0.34
+  fsky_yy: 0.1
+  fsky_ky: 0.1
+  fsky_kk: 0.1
+  fsky_yg: 0.1
   fsky_kg: 0.1
-  fsky_gg: 0.34
+  fsky_gg: 0.1
 
   stats_for_cov:
     - ky
@@ -248,16 +231,18 @@ analysis:
     - gg
     - gk
 
+  # Ellipticity shear noise per bin
   sigma_epsilon_SN_bins:
-    - 0.26
-    - 0.26
-    - 0.26
-    - 0.26
-    - 0.26
+    - 0.
   
+  # Galaxy density shear noise per bin in arcmin^-2
   neff_arcmin2_SN_bins:
-    - 4.64
-    - 4.64
-    - 4.64
-    - 4.64
-    - 4.64
+    - 1.
+
+  # Galaxy shot noise: number density per bin in arcmin^-2
+  nbar_lens_bins:
+    - 1.
+  
+  # yy auto power spectrum
+  #yy_total_ell_fname: None
+  #yy_noise_ell_fname: None
