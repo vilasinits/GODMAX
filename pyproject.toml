@@ -37,6 +37,7 @@ dependencies = [
     "configobj",
     "astropy>=5.0",
     "jax_cosmo",
+    "setuptools<81",    # jax_cosmo 0.1.0 imports pkg_resources, which setuptools >= 81 no longer ships
     "deepmerge",
     "healpy",
     "matplotlib",
