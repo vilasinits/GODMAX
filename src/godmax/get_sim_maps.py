@@ -894,11 +894,17 @@ class get_sim_map(Profiles):
         where ``W_kappa`` is the same CMB/source lensing kernel used in
         get_Cls and ``Sigma_phys`` is the projected physical matter density
         returned by ``log_rhom2D_interp``.
+
+        ``mock_params_dict['kappa_map_source']`` picks the kernel: ``'shear'`` (default, source bin
+        ``kappa_source_bin``) or ``'cmb'`` (source at z_source_cmb).
         """
+        kappa_map_source = str(mock_params_dict.get('kappa_map_source', 'shear')).lower()
+        if kappa_map_source not in ('shear', 'cmb'):
+            raise ValueError(f"kappa_map_source must be 'shear' or 'cmb', got {kappa_map_source!r}")
         kappa_source_bin = int(mock_params_dict.get('kappa_source_bin', 0))
         Wk_array, source_label = self._compute_wkappa_array(
             kappa_source_bin=kappa_source_bin,
-            is_cmb_lensing=bool(getattr(self, 'is_cmb_lensing', False)),
+            use_cmb_kernel=(kappa_map_source == 'cmb'),
         )
 
         self.kappa_source_bin = kappa_source_bin
@@ -910,7 +916,7 @@ class get_sim_map(Profiles):
             extrap=True,
         )
 
-    def _compute_wkappa_array(self, kappa_source_bin=0, is_cmb_lensing=False):
+    def _compute_wkappa_array(self, kappa_source_bin=0, use_cmb_kernel=False):
         """Compute the map-side lensing kernel for one DES source bin or CMB."""
         z_grid = np.asarray(self.z_array, dtype=np.float64)
         chi_grid = np.asarray(self.chi_array, dtype=np.float64)
@@ -919,7 +925,7 @@ class get_sim_map(Profiles):
             / (2.0 * ((const.c.value * 1e-3) ** 2))
         )
 
-        if bool(is_cmb_lensing):
+        if bool(use_cmb_kernel):
             Wk_array = compute_cmb_lensing_efficiency(
                 z_grid, chi_grid, self.chi_CMB, self.cosmo_jax.Omega_m
             )
@@ -952,14 +958,14 @@ class get_sim_map(Profiles):
         for source_bin in mock_params_dict.get('multi_kappa_source_bins', []):
             Wk_array, label = self._compute_wkappa_array(
                 kappa_source_bin=int(source_bin),
-                is_cmb_lensing=False,
+                use_cmb_kernel=False,
             )
             labels.append(label)
             kernels.append(Wk_array)
         if bool(mock_params_dict.get('multi_kappa_include_cmb', False)):
             Wk_array, label = self._compute_wkappa_array(
                 kappa_source_bin=0,
-                is_cmb_lensing=True,
+                use_cmb_kernel=True,
             )
             labels.append(label)
             kernels.append(Wk_array)

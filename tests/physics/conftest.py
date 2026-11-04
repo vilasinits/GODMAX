@@ -75,7 +75,6 @@ def base_dicts():
     ana["nz_lens_info_dict"] = {"nbins_lens": 1, "z_array_lens": zl, "nz0": ((zl > 0.2) & (zl < 0.8)).astype(float),
                                 "z_edges_bins_lens": [[0.2, 0.8]]}
     ana["nbar_lens_bins"] = [0.3]
-    ana["is_cmb_lensing"] = False
     return sim, halo, ana, other
 
 
