@@ -148,7 +148,10 @@ analysis:
   #
   baryonification_tSZ: True
   hod_params_model: combined
-  is_cmb_lensing: False
+  # CMB lensing (always computed alongside shear). Source redshift, and the number of log-spaced
+  # points of the halofit high-z tail of the CMB-kappa auto spectrum (zmax_for_Cls .. z_source_cmb).
+  z_source_cmb: 1100.0
+  nz_cmb_lensing_tail: 128
   
   # For trapezoidal integration
   num_points_trapz_int: 32

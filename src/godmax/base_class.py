@@ -421,10 +421,24 @@ class base_class:
         self.z_array_for_Cls = jnp.linspace(self.zmin_for_Cls, self.zmax_for_Cls, self.nz_for_Cls)
         self.scale_fac_a_array_for_Cls = 1./(1. + self.z_array_for_Cls)
 
-        self.is_cmb_lensing = analysis_dict.get('is_cmb_lensing', False)
-        a_CMB = 1/(1 + 1100)
-        # jax_cosmo returns shape (1,) for a scalar a; squeeze so Wk_mat is (nbins, nz_for_Cls).
+        # CMB lensing is always computed as its own field next to shear (probe 5 in get_Cl_tot,
+        # field 'c' in get_covs). The old is_cmb_lensing switch, which replaced the shear kernel by the
+        # CMB kernel, is gone: fail loudly so old configs do not silently get shear labelled as CMB.
+        if analysis_dict.get('is_cmb_lensing', False):
+            raise ValueError(
+                "analysis['is_cmb_lensing'] has been removed. CMB lensing is now always computed "
+                "alongside shear: use Cl_kcmb_kcmb_tot_mat, Cl_kappa_kcmb_tot_mat, Cl_kcmb_y_tot_mat, "
+                "Cl_gal_kcmb_tot_mat (and stats 'cc', 'kc', 'cy', 'gc' in get_covs). For maps, set "
+                "mock_params_dict['kappa_map_source'] = 'cmb'."
+            )
+        # Source redshift of CMB lensing (last scattering). pyccl users often pass 1089.
+        self.z_source_cmb = float(analysis_dict.get('z_source_cmb', 1100.0))
+        a_CMB = 1/(1 + self.z_source_cmb)
+        # jax_cosmo returns shape (1,) for a scalar a; squeeze so the CMB kernel is (nz_for_Cls,).
         self.chi_CMB = jnp.squeeze(self.comoving_distance(a_CMB))
+        # High-z tail of the CMB-kappa auto spectrum: halofit P_mm on a log-spaced grid from
+        # zmax_for_Cls to z_source_cmb (the halo-model integral covers zmin_for_Cls..zmax_for_Cls).
+        self.nz_cmb_lensing_tail = int(analysis_dict.get('nz_cmb_lensing_tail', 128))
         nz_info_dict = analysis_dict.get('nz_source_info_dict', None)
         try:
             self.nbins = nz_info_dict['nbins']
@@ -511,6 +525,13 @@ class base_class:
         self.chi_array_for_Cls = jnp.exp(jnp.interp(self.z_array_for_Cls, self.z_array, jnp.log(self.chi_array)))
         self.dchi_dz_array_for_Cls = jnp.exp(jnp.interp(self.z_array_for_Cls, self.z_array, jnp.log(self.dchi_dz_array)))
         self.growth_array_for_Cls = jnp.exp(jnp.interp(self.z_array_for_Cls, self.z_array, jnp.log(self.growth_array)))
+
+        # Background on the CMB-lensing tail grid (zmax_for_Cls .. z_source_cmb), computed directly
+        # rather than interpolated, since it lies outside the halo-model grid.
+        self.z_array_cmb_tail = jnp.geomspace(self.zmax_for_Cls, self.z_source_cmb, self.nz_cmb_lensing_tail)
+        self.scale_fac_a_array_cmb_tail = 1. / (1. + self.z_array_cmb_tail)
+        self.chi_array_cmb_tail = radial_comoving_distance(self.cosmo_jax, self.scale_fac_a_array_cmb_tail)
+        self.dchi_dz_array_cmb_tail = (const.c.value * 1e-3) / bkgrd.H(self.cosmo_jax, self.scale_fac_a_array_cmb_tail)
         self.rhom_0 = self.get_rho_m(0.0)
 
     def comoving_distance(self, a):
