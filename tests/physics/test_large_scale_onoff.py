@@ -46,9 +46,8 @@ def test_baryonification_on_off_lowest_ell(model, name):
 
 
 def test_cmb_lensing_on_off_lowest_ell(model):
-    on = model("on", ana_over={"is_cmb_lensing": True})
-    off = model("off", ana_over={"is_cmb_lensing": True})
-    dev = V.lowest_ell_deviation(on, off, "Cl_kappa_kappa_tot_mat")
+    on, off = model("on"), model("off")
+    dev = V.lowest_ell_deviation(on, off, "Cl_kcmb_kcmb_tot_mat")
     assert dev < ELL_TOL, f"{dev:.4g}"
 
 

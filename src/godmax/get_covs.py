@@ -41,6 +41,7 @@ class get_cov(get_Cl):
         self.ukappal_dmb_prefac_mat = get_vmapped_func(self.get_ukl_interp, 2)(jnp.arange(self.nell), jnp.arange(self.nM)).T
         self.ukappal_dmb_prefac_mat = jnp.moveaxis(self.ukappal_dmb_prefac_mat, 0, 1)
         self.ukappa_l_for_cov = vmap(self.get_ukappa_l_forcov)(jnp.arange(self.nbins))
+        self.ukcmb_l_for_cov = self.get_ukcmb_l_forcov()
         if self.model_galaxies:
             self.ugl_mat = get_vmapped_func(self.get_ugl_interp, 2)(jnp.arange(self.nell), jnp.arange(self.nM)).T
             self.ugl_mat = jnp.moveaxis(self.ugl_mat, 0, 1)
@@ -79,6 +80,14 @@ class get_cov(get_Cl):
             'gg': analysis_dict.get('fsky_gg',0.1),
             'gy': analysis_dict.get('fsky_yg',0.1),
             'yg': analysis_dict.get('fsky_yg',0.1),
+            # CMB lensing field 'c'
+            'cc': analysis_dict.get('fsky_cc',0.1),
+            'kc': analysis_dict.get('fsky_kc',0.1),
+            'ck': analysis_dict.get('fsky_kc',0.1),
+            'cy': analysis_dict.get('fsky_cy',0.1),
+            'yc': analysis_dict.get('fsky_cy',0.1),
+            'gc': analysis_dict.get('fsky_gc',0.1),
+            'cg': analysis_dict.get('fsky_gc',0.1),
             }
 
         self.stats_analyze = analysis_dict['stats_for_cov']
@@ -183,10 +192,54 @@ class get_cov(get_Cl):
         self.Cl_result_dict['kk']['bin_combs'] = bin_combs_kk
         self.Cl_result_dict['gy']['bin_combs'] = bin_combs_gy
         self.Cl_result_dict['gk']['bin_combs'] = bin_combs_gk
-        self.Cl_result_dict['gg']['bin_combs'] = bin_combs_gg                
+        self.Cl_result_dict['gg']['bin_combs'] = bin_combs_gg
+
+        # CMB lensing field 'c' (single map, bin index 0). Pairs are stored once, in the order
+        # 'cc', 'kc', 'cy', 'gc'; get_cov_G finds 'ck', 'yc', 'cg' by reversing the letters.
+        # Reconstruction noise N_ell^{kappa kappa} is read from cmbk_noise_ell_fname (columns ell, N_ell);
+        # without it the cc noise is zero.
+        cmbk_noise_ell_fname = analysis_dict.get('cmbk_noise_ell_fname', None)
+        if cmbk_noise_ell_fname is not None:
+            ell_n, Nl_n = np.loadtxt(cmbk_noise_ell_fname, unpack=True, usecols=(0, 1))
+            log_Nl_interp = interpax.Interpolator1D(
+                jnp.log(jnp.array(ell_n)), jnp.log(jnp.abs(jnp.array(Nl_n)) + 1e-40), extrap=True
+            )
+            self.Cl_kcmb_kcmb_noise_mat = jnp.exp(log_Nl_interp(jnp.log(jnp.asarray(l_array_survey))))
+        else:
+            if any('c' in stat for stat in self.stats_analyze):
+                print('Warning: no cmbk_noise_ell_fname provided; CMB lensing noise set to zero')
+            self.Cl_kcmb_kcmb_noise_mat = jnp.zeros(len(l_array_survey))
+
+        self.Cl_result_dict['cc'] = {'bin_0_0': {
+            'tot_ellsurvey': self.Cl_kcmb_kcmb_tot_mat,
+            'noise_ellsurvey': self.Cl_kcmb_kcmb_noise_mat,
+            'tot_plus_noise_ellsurvey': self.Cl_kcmb_kcmb_tot_mat + self.Cl_kcmb_kcmb_noise_mat,
+        }, 'bin_combs': [[0, 0]]}
+
+        self.Cl_result_dict['kc'] = {'bin_combs': []}
+        for jb1 in range(self.nbins):
+            Cl_kc = self.Cl_kappa_kcmb_tot_mat[:, jb1]
+            self.Cl_result_dict['kc']['bin_' + str(jb1+1) + '_0'] = {
+                'tot_ellsurvey': Cl_kc, 'tot_plus_noise_ellsurvey': Cl_kc}
+            self.Cl_result_dict['kc']['bin_combs'].append([jb1+1, 0])
+
+        if self.model_tSZ:
+            self.Cl_result_dict['cy'] = {'bin_0_0': {
+                'tot_ellsurvey': self.Cl_kcmb_y_tot_mat,
+                'tot_plus_noise_ellsurvey': self.Cl_kcmb_y_tot_mat,
+            }, 'bin_combs': [[0, 0]]}
+
+        if self.model_galaxies:
+            self.Cl_result_dict['gc'] = {'bin_combs': []}
+            for jb1 in range(self.nbins_lens):
+                Cl_gc = self.Cl_gal_kcmb_tot_mat[:, jb1]
+                self.Cl_result_dict['gc']['bin_' + str(jb1+1) + '_0'] = {
+                    'tot_ellsurvey': Cl_gc, 'tot_plus_noise_ellsurvey': Cl_gc}
+                self.Cl_result_dict['gc']['bin_combs'].append([jb1+1, 0])
 
         ul_dict = {}
         ul_dict['y_0'] = self.uy_l_for_cov
+        ul_dict['c_0'] = self.ukcmb_l_for_cov
 
         for jb in range(self.nbins):
             ul_dict['k_' + str(jb+1)] = self.ukappa_l_for_cov[jb,...]
@@ -483,7 +536,15 @@ class get_cov(get_Cl):
         prefac_for_uk = Wk_jb/(self.chi_array_for_Cls**2)
         prefac_for_uk_tile = jnp.tile(prefac_for_uk[None,:,None], (self.ukappal_dmb_prefac_mat.shape[0], 1, self.ukappal_dmb_prefac_mat.shape[2]))
         return prefac_for_uk_tile *  self.ukappal_dmb_prefac_mat
-    
+
+    @partial(jit, static_argnums=(0,))
+    def get_ukcmb_l_forcov(self):
+        '''CMB-kappa halo profile in l-space for the trispectrum: same matter profile as shear,
+        weighted by the CMB lensing kernel instead of a source-bin kernel.'''
+        prefac_for_uk = self.Wkcmb_array/(self.chi_array_for_Cls**2)
+        prefac_for_uk_tile = jnp.tile(prefac_for_uk[None,:,None], (self.ukappal_dmb_prefac_mat.shape[0], 1, self.ukappal_dmb_prefac_mat.shape[2]))
+        return prefac_for_uk_tile *  self.ukappal_dmb_prefac_mat
+
 
     @partial(jit, static_argnums=(0,))
     def get_ug_l_forcov(self, jb):

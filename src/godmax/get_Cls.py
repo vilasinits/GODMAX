@@ -1,5 +1,6 @@
 from godmax.get_Pkzs import get_Pkz
 from godmax.base_class import get_vmapped_func, get_vmapped_func_warg, EmptyCallable
+from godmax.helpers.jax_cosmo_power import linear_matter_power, halofit_parameters, nonlinear_matter_power
 import jax.numpy as jnp
 import numpy as np
 from jax import jit, vmap
@@ -43,6 +44,14 @@ class get_Cl(get_Pkz):
             super().__init__(sim_params_dict, halo_params_dict, analysis_dict, other_params_dict)
         else:
             self.__dict__.update(Pkz_obj.__dict__)
+        # Callers that build from a Pkz_obj skip base_class, so also catch the removed switch when it
+        # was set as an attribute (e.g. dr1_cmbx's TheoryGodmax._as_cmb_seed); otherwise they would
+        # silently get shear-kernel spectra labelled as CMB lensing.
+        if getattr(self, 'is_cmb_lensing', False):
+            raise ValueError(
+                "is_cmb_lensing has been removed: CMB lensing is now always computed alongside shear. "
+                "Use Cl_kcmb_kcmb_tot_mat, Cl_kappa_kcmb_tot_mat, Cl_kcmb_y_tot_mat, Cl_gal_kcmb_tot_mat."
+            )
 
         # Convert the 3D power spectra multipole space Pkz_ell:
         vmapped_func = get_vmapped_func_warg(self.get_P_lz, 2, 3)
@@ -93,13 +102,12 @@ class get_Cl(get_Pkz):
         else: self.logPkgmlz_2d_interp, self.logPkgglz_2d_interp, self.logPkgylz_2d_interp, self.logPkgm_nfw_lz_2d_interp, self.logPkge_lz_2d_interp = EmptyCallable(), EmptyCallable(), EmptyCallable(), EmptyCallable(), EmptyCallable()
 
         # Get the window functions for different probes:
-        if self.is_cmb_lensing:
-            self.Wk_mat = get_vmapped_func(self.get_cmb_lensing_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
-        else:
-            self.pzs_inp_mat = vmap(self.get_photoz_biased_nz)(jnp.arange(self.nbins))
-            self.Wk_gravonly_mat = get_vmapped_func(self.get_weak_lensing_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
-            self.nla_mat = get_vmapped_func(self.get_nla_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T        
-            self.Wk_mat = self.Wk_gravonly_mat + self.nla_mat
+        self.pzs_inp_mat = vmap(self.get_photoz_biased_nz)(jnp.arange(self.nbins))
+        self.Wk_gravonly_mat = get_vmapped_func(self.get_weak_lensing_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
+        self.nla_mat = get_vmapped_func(self.get_nla_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
+        self.Wk_mat = self.Wk_gravonly_mat + self.nla_mat
+        # CMB lensing kernel (probe 5) on z_array_for_Cls. No IA and no shear m-bias.
+        self.Wkcmb_array = vmap(self.get_cmb_lensing_kernel)(self.z_array_for_Cls, self.chi_array_for_Cls)
         self.Wy_array = (1.0 / (1.0 + self.z_array_for_Cls))
         oneMpc = (((10 ** 6)) * (u.pc).to(u.m)) * (u.m)
         self.const_coeff_tau = (((const.sigma_T * oneMpc).to(u.cm ** 3)).value)/(self.cosmo_params['H0']/100.)
@@ -215,6 +223,51 @@ class get_Cl(get_Pkz):
                 print("Time to compute SZ angular power spectra: ", time.time() - ti)
                 ti = time.time()
 
+        # CMB lensing alongside shear (probe 5). Shapes follow the existing kappa outputs:
+        #   Cl_kcmb_kcmb_tot_mat  (nell,)              halo model on zmin..zmax_for_Cls + halofit tail to z_source_cmb
+        #   Cl_kcmb_kcmb_tail_mat (nell,)              the tail alone (zmax_for_Cls..z_source_cmb)
+        #   Cl_kappa_kcmb_tot_mat (nell, nbins)        shear bin x CMB kappa (includes IA and m-bias of the shear bin)
+        #   Cl_kcmb_y_tot_mat     (nell,)              if model_tSZ (beam on y, as in Cl_kappa_y_tot_mat)
+        #   Cl_gal_kcmb_tot_mat   (nell, nbins_lens)   if model_galaxies
+        # Only the auto spectrum gets the tail: shear and galaxy kernels vanish beyond their n(z), and the
+        # tSZ signal above zmax_for_Cls is neglected, as in every other y spectrum.
+        self.Cl_kcmb_kcmb_tail_mat = self.get_Cl_kcmb_kcmb_tail()
+        self.Cl_kcmb_kcmb_tot_mat = self.get_Cl_tot(0, 0, 5, 5) + self.Cl_kcmb_kcmb_tail_mat
+        vmapped_func = get_vmapped_func_warg(self.get_Cl_tot, 1, 4)
+        self.Cl_kappa_kcmb_tot_mat = vmapped_func(jnp.arange(self.nbins), 0, 0, 5).T
+        if self.model_tSZ:
+            self.Cl_kcmb_y_tot_mat = self.get_Cl_tot(0, 0, 5, 3)
+        if self.model_galaxies:
+            self.Cl_gal_kcmb_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), 0, 2, 5).T
+
+    def get_Cl_kcmb_kcmb_tail(self):
+        """High-z tail of the CMB-kappa auto spectrum, z from zmax_for_Cls to z_source_cmb.
+
+        Uses the halofit matter power (numerical jax_cosmo halofit, also when symbolic_pk is True,
+        since the emulator is not meant for z >> 3) without baryonic or halo-model corrections.
+        This mirrors pyccl/CAMB, which integrate CMB lensing to the source with a non-linear P_mm.
+        """
+        a_tail = self.scale_fac_a_array_cmb_tail
+        plin_tail = vmap(linear_matter_power, (None, None, 0))(self.cosmo_jax, self.kPk_array, a_tail).T
+        hfit_tail = vmap(partial(halofit_parameters, num_points=self.num_points_halofit),
+                         (None, 0))(self.cosmo_jax, a_tail).T
+        self.phfit_kz_cmb_tail_mat = vmap(nonlinear_matter_power, (None, None, 0, None, None, None))(
+            self.cosmo_jax, self.kPk_array, a_tail, plin_tail, hfit_tail, a_tail).T          # (nk, nz_tail)
+
+        chi = self.chi_array_cmb_tail
+        W = vmap(self.get_cmb_lensing_kernel)(self.z_array_cmb_tail, chi)
+        self.Wkcmb_tail_array = W
+        log_k = jnp.log(self.kPk_array)
+        log_P = jnp.log(self.phfit_kz_cmb_tail_mat)
+
+        def cl_one(ell):
+            k_ell = (ell + 0.5) / jnp.clip(chi, 1.0)
+            P = jnp.exp(vmap(lambda lk, lP: jnp.interp(lk, log_k, lP), (0, 1))(jnp.log(k_ell), log_P))
+            fx = (W / chi**2)**2 * chi**2 * self.dchi_dz_array_cmb_tail * P
+            return jsi.trapezoid(fx, x=self.z_array_cmb_tail)
+
+        return vmap(cl_one)(self.ell_array)
+
     @partial(jit, static_argnums=(0,))
     def get_uyl(self, jl, jz, jM):
         '''Beam-convolved tSZ y Fourier profile projected to (l, z, M): interpolate uk_y to
@@ -307,16 +360,11 @@ class get_Cl(get_Pkz):
         return nz_interp / norm_val
 
     @partial(jit, static_argnums=(0,))
-    def get_cmb_lensing_kernel(self, jb, jz):
+    def get_cmb_lensing_kernel(self, z, chi):
         """
-        Returns a weak lensing kernel
-
-        Note: this function handles differently nzs that correspond to extended redshift
-        distribution, and delta functions.
+        CMB lensing kernel W(z) = 3/2 Om (H0/c)^2 (1+z) chi (chi_CMB - chi)/chi_CMB, with the source
+        at z_source_cmb. Same normalisation as get_weak_lensing_kernel (chi in Mpc/h).
         """
-        z = self.z_array_for_Cls[jz]
-        chi = self.chi_array_for_Cls[jz]
-
         radial_kernel_cmb = jnp.clip(self.chi_CMB - chi, 0) / jnp.clip(self.chi_CMB, 0.1)
         constant_factor_cmb = 3.0 * (100.)**2 * self.cosmo_jax.Omega_m / (2.0 * ((const.c.value * 1e-3)**2))
         return constant_factor_cmb * radial_kernel_cmb * (1.0 + z) * chi
@@ -372,7 +420,9 @@ class get_Cl(get_Pkz):
             jl (int): Index of the multipole ℓ in self.ell_array.
             jb1 (int): First index for lens/source bin.
             jb2 (int): Second index for lens/source bin.
-            probe1 (int): Integer code selecting the first field (e.g., shear, galaxies, tSZ).
+            probe1 (int): Integer code selecting the first field: 0 shear (total matter), 1 shear with
+                the NFW/halofit matter P, 2 galaxies, 3 tSZ y, 4 tau, 5 CMB lensing kappa.
+                Integrates over z_array_for_Cls only (the CMB-kappa auto tail is added separately).
             probe2 (int): Integer code selecting the second field.
 
         Returns:
@@ -388,7 +438,8 @@ class get_Cl(get_Pkz):
                 (probe == 1, (1. + self.mult_shear_bias_array[jb]) * (self.Wk_mat[jb] / (self.chi_array_for_Cls**2))),
                 (probe == 2, self.Wg_mat[jb] / (self.dchi_dz_array_for_Cls * self.chi_array_for_Cls**2)),
                 (probe == 3, self.Wy_array / (self.chi_array_for_Cls**2)),
-                (probe == 4, self.Wtau_array / (self.chi_array_for_Cls**2))
+                (probe == 4, self.Wtau_array / (self.chi_array_for_Cls**2)),
+                (probe == 5, self.Wkcmb_array / (self.chi_array_for_Cls**2)),
             ]
             
             # Default value if no condition matches
@@ -401,7 +452,8 @@ class get_Cl(get_Pkz):
         prefac_for_uk1 = compute_prefac(probe1, jb1)
         prefac_for_uk2 = compute_prefac(probe2, jb2)        
 
-        Pk = self.cached_power_spectra[probe1, probe2]
+        # CMB kappa (5) traces the same total matter field as shear (0), so it reuses its P(k,z) slot.
+        Pk = self.cached_power_spectra[jnp.where(probe1 == 5, 0, probe1), jnp.where(probe2 == 5, 0, probe2)]
         fx = prefac_for_uk1 * prefac_for_uk2  * (self.chi_array_for_Cls ** 2) * self.dchi_dz_array_for_Cls * Pk
         return jsi.trapezoid(fx, x=self.z_array_for_Cls)     
 
