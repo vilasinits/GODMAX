@@ -48,7 +48,7 @@ class get_cov(get_Cl):
             # nbins == nbins_lens, but silently clipped otherwise).
             self.ug_l_for_cov = vmap(self.get_ug_l_forcov)(jnp.arange(self.nbins_lens))
             if self.model_magnification:
-                # u^{g,obs} = u^g + u^mu, with u^mu = (5s-2) W_mu u^m (Eq. 21): same matter profile as kappa.
+                # u^{g,obs} = u^g + u^mu, with u^mu = (5s-2) W_mu u^m: same matter profile as kappa.
                 # Added BEFORE np.abs() in get_T_ABCD_NG, so the sign of (5s-2) is kept.
                 self.ug_l_for_cov = self.ug_l_for_cov + vmap(self.get_umu_l_forcov)(jnp.arange(self.nbins_lens))
         self.hmf_Mz_mat_for_cov = vmap(self.get_hmf_interp)(jnp.arange(self.nM)).T

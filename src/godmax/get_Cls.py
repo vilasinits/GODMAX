@@ -122,7 +122,7 @@ class get_Cl(get_Pkz):
             self.Wg_mat = vmap(self.get_nz_lens_interp)(jnp.arange(self.nbins_lens))
         else: self.Wg_mat = jnp.zeros((1,1))
         if self.model_galaxies and self.model_magnification:
-            # Unit lensing-efficiency kernel of each lens bin (Eq. 22), and the same times (5 s - 2) (Eq. 21)
+            # Unit lensing-efficiency kernel of each lens bin, and the same times (5 s - 2)
             self.Wmu_unit_mat = get_vmapped_func(self.get_magnification_kernel, 2)(jnp.arange(self.nbins_lens), jnp.arange(self.nz_for_Cls)).T
             self.mag_fac_array = 5. * self.mag_slope_array - 2.
             self.Wmu_mat = self.mag_fac_array[:, None] * self.Wmu_unit_mat
@@ -384,7 +384,7 @@ class get_Cl(get_Pkz):
     @partial(jit, static_argnums=(0,))
     def get_magnification_kernel(self, jb, jz):
         """
-        Lensing-magnification efficiency of lens bin jb (Eq. 22, without the (5s-2) factor):
+        Lensing-magnification efficiency of lens bin jb (without the (5s-2) factor):
             3/2 Om (H0/c)^2 (1+z) chi(z) I_g(z),
             I_g(z) = int_z^zmax dz_g phi'(z_g) (chi(z_g) - chi(z)) / chi(z_g),
         with phi' the normalised galaxy redshift distribution of the lens bin. Same structure as
