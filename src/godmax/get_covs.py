@@ -44,7 +44,13 @@ class get_cov(get_Cl):
         if self.model_galaxies:
             self.ugl_mat = get_vmapped_func(self.get_ugl_interp, 2)(jnp.arange(self.nell), jnp.arange(self.nM)).T
             self.ugl_mat = jnp.moveaxis(self.ugl_mat, 0, 1)
-            self.ug_l_for_cov = vmap(self.get_ug_l_forcov)(jnp.arange(self.nbins))
+            # One entry per LENS bin (was arange(self.nbins), i.e. the source bins: identical when
+            # nbins == nbins_lens, but silently clipped otherwise).
+            self.ug_l_for_cov = vmap(self.get_ug_l_forcov)(jnp.arange(self.nbins_lens))
+            if self.model_magnification:
+                # u^{g,obs} = u^g + u^mu, with u^mu = (5s-2) W_mu u^m (Eq. 21): same matter profile as kappa.
+                # Added BEFORE np.abs() in get_T_ABCD_NG, so the sign of (5s-2) is kept.
+                self.ug_l_for_cov = self.ug_l_for_cov + vmap(self.get_umu_l_forcov)(jnp.arange(self.nbins_lens))
         self.hmf_Mz_mat_for_cov = vmap(self.get_hmf_interp)(jnp.arange(self.nM)).T
 
 
@@ -490,8 +496,18 @@ class get_cov(get_Cl):
         Wk_jb = self.Wg_mat[jb]
         prefac_for_uk = Wk_jb/(self.dchi_dz_array_for_Cls * self.chi_array_for_Cls**2)
         prefac_for_uk_tile = jnp.tile(prefac_for_uk[None,:,None], (self.ugl_mat.shape[0], 1, self.ugl_mat.shape[2]))
-        return prefac_for_uk_tile *  self.ugl_mat        
+        return prefac_for_uk_tile *  self.ugl_mat
+
     
+    @partial(jit, static_argnums=(0,))
+    def get_umu_l_forcov(self, jb):
+        """Lensing-magnification profile of lens bin jb for the 1-halo trispectrum (includes 5s-2)."""
+        Wmu_jb = self.Wmu_mat[jb]
+        prefac_for_umu = Wmu_jb / (self.chi_array_for_Cls**2)
+        prefac_for_umu_tile = jnp.tile(prefac_for_umu[None, :, None], (self.ukappal_dmb_prefac_mat.shape[0], 1, self.ukappal_dmb_prefac_mat.shape[2]))
+        return prefac_for_umu_tile * self.ukappal_dmb_prefac_mat
+
+
     @partial(jit, static_argnums=(0,))
     def get_hmf_interp(self, jM):
         val = jnp.interp(self.z_array_for_Cls, self.z_array, self.hmf_Mz_mat[:,jM])
