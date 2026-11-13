@@ -436,6 +436,9 @@ class base_class:
             self.pzs_inp_mat_inp_lens = jnp.array([jnp.ones_like(self.z_array_nz_lens)])
             self.z_edges_bins_lens = jnp.array([[self.z_array_nz_lens[0], self.z_array_nz_lens[-1]]])
 
+        # chi(z) on the lens n(z) grid, needed for the lensing-magnification kernel of the galaxy sample
+        self.zmax_lens = self.z_array_nz_lens[-1]  # also defined here because the except-branch above does not set it
+        self.chi_array_nz_lens = radial_comoving_distance(self.cosmo_jax, 1.0 / (1.0 + self.z_array_nz_lens))
 
         self.zmax = self.z_array_nz[-1]
         self.A_IA = other_params_dict.get('A_IA', 0.1)
@@ -444,6 +447,11 @@ class base_class:
         self.C1_bar = other_params_dict.get('C1_rhocrit', 0.0134)
         self.C1_rho_m_bar = self.C1_bar * self.cosmo_params['Om0']
         self.Delta_z_bias_array = jnp.array(other_params_dict.get('Delta_z_bias_array', [0.0]))
+        # Lensing magnification of the galaxy field: delta_g^obs = delta_g + (5 s - 2) kappa_g,
+        # with s = dlog10 N / dm the faint-end slope of the galaxy number counts (one value per lens bin).
+        # Default s = 0.4 gives 5 s - 2 = 0, i.e. no effect even if model_magnification=True.
+        self.model_magnification = analysis_dict.get('model_magnification', False)
+        self.mag_slope_array = jnp.array(other_params_dict.get('mag_slope_array', [0.4] * self.nbins_lens))
         self.mult_shear_bias_array = jnp.array(other_params_dict.get('mult_shear_bias_array', [0.0]))
 
         self.tSZ_transition_model = analysis_dict.get('tSZ_transition_model', 'poweradd')

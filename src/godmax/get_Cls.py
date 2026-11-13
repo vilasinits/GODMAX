@@ -62,7 +62,7 @@ class get_Cl(get_Pkz):
             self.Pkgg_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgg_tot_mat).T
 
         # Get the interpolators:
-        self.cached_power_spectra = jnp.zeros((5, 5, self.nell, self.nz_for_Cls))
+        self.cached_power_spectra = jnp.zeros((6, 6, self.nell, self.nz_for_Cls))
         log_ell = jnp.log(self.ell_array)
         self.logPkmmlz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkmm_lz_mat), extrap=True)        
         self.cached_power_spectra = self.cached_power_spectra.at[0,0].set(vmap(lambda l: jnp.exp(self.logPkmmlz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
@@ -92,6 +92,19 @@ class get_Cl(get_Pkz):
 
         else: self.logPkgmlz_2d_interp, self.logPkgglz_2d_interp, self.logPkgylz_2d_interp, self.logPkgm_nfw_lz_2d_interp, self.logPkge_lz_2d_interp = EmptyCallable(), EmptyCallable(), EmptyCallable(), EmptyCallable(), EmptyCallable()
 
+        # Probe 5 = lensing magnification of the galaxy sample (mu_g = (5s-2) kappa_g). It is a pure
+        # matter-tracer field, so it shares the matter power spectra of the kappa probe (0):
+        #   mu x mu -> Pmm, mu x kappa -> Pmm, g x mu -> Pgm, mu x y -> Pmy
+        if self.model_magnification:
+            c = self.cached_power_spectra
+            c = c.at[5, 5].set(c[0, 0])
+            c = c.at[5, 0].set(c[0, 0]).at[0, 5].set(c[0, 0])
+            if self.model_galaxies:
+                c = c.at[2, 5].set(c[2, 0]).at[5, 2].set(c[2, 0])
+            if self.model_tSZ:
+                c = c.at[5, 3].set(c[0, 3]).at[3, 5].set(c[0, 3])
+            self.cached_power_spectra = c
+
         # Get the window functions for different probes:
         if self.is_cmb_lensing:
             self.Wk_mat = get_vmapped_func(self.get_cmb_lensing_kernel, 2)(jnp.arange(self.nbins), jnp.arange(self.nz_for_Cls)).T
@@ -108,6 +121,12 @@ class get_Cl(get_Pkz):
         if self.model_galaxies:
             self.Wg_mat = vmap(self.get_nz_lens_interp)(jnp.arange(self.nbins_lens))
         else: self.Wg_mat = jnp.zeros((1,1))
+        if self.model_galaxies and self.model_magnification:
+            # Unit lensing-efficiency kernel of each lens bin (Eq. 22), and the same times (5 s - 2) (Eq. 21)
+            self.Wmu_unit_mat = get_vmapped_func(self.get_magnification_kernel, 2)(jnp.arange(self.nbins_lens), jnp.arange(self.nz_for_Cls)).T
+            self.mag_fac_array = 5. * self.mag_slope_array - 2.
+            self.Wmu_mat = self.mag_fac_array[:, None] * self.Wmu_unit_mat
+        else: self.Wmu_mat = jnp.zeros((1, self.nz_for_Cls))
 
         # tSZ y Fourier profile in l-space (moved here from get_covs so it is accessible outside the
         # covariance code): uyl_mat_tointp[l, z, M] (beam-convolved), uyl_mat[l, z_for_Cls, M]
@@ -136,12 +155,25 @@ class get_Cl(get_Pkz):
         if self.model_galaxies:
             # self.Cl_gal_gal_tot_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nbins_lens), jnp.arange(self.nbins_lens), 2, 2).T
             self.Cl_gal_gal_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), jnp.arange(self.nbins_lens), 2, 2).T
+            if self.model_magnification:
+                # C^{gg,obs} = C^{gg} + C^{g mu} + C^{mu g} + C^{mu mu}
+                # Indices are [ell, i, j]; i,j are lens bins.
+                self.Cl_gal_gal_nomag_mat = self.Cl_gal_gal_tot_mat
+                self.Cl_gal_mu_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), jnp.arange(self.nbins_lens), 2, 5).T   # C^{g_i mu_j}
+                self.Cl_mu_mu_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), jnp.arange(self.nbins_lens), 5, 5).T    # C^{mu_i mu_j}
+                self.Cl_gal_gal_tot_mat = (self.Cl_gal_gal_nomag_mat + self.Cl_gal_mu_tot_mat
+                                           + jnp.transpose(self.Cl_gal_mu_tot_mat, (0, 2, 1)) + self.Cl_mu_mu_tot_mat)
             if self.ENABLE_TIMING:
                 print("Time to compute the gal gal: ", time.time() - ti)
                 ti = time.time()
             
             # self.Cl_gal_kappa_tot_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nbins_lens), jnp.arange(self.nbins), 2, 0).T
             self.Cl_gal_kappa_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), jnp.arange(self.nbins), 2, 0).T
+            if self.model_magnification:
+                # C^{g kappa,obs} = C^{g kappa} + C^{mu kappa}
+                self.Cl_gal_kappa_nomag_mat = self.Cl_gal_kappa_tot_mat
+                self.Cl_mu_kappa_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), jnp.arange(self.nbins), 5, 0).T
+                self.Cl_gal_kappa_tot_mat = self.Cl_gal_kappa_nomag_mat + self.Cl_mu_kappa_tot_mat
             if self.ENABLE_TIMING:
                 print("Time to compute the kappa gal: ", time.time() - ti)
                 ti = time.time()
@@ -206,6 +238,11 @@ class get_Cl(get_Pkz):
             if self.model_galaxies:
                 # self.Cl_gal_y_tot_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nbins_lens), 0, 2, 3).T        
                 self.Cl_gal_y_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), 0, 2, 3).T
+                if self.model_magnification:
+                    # C^{g y,obs} = C^{g y} + C^{mu y}
+                    self.Cl_gal_y_nomag_mat = self.Cl_gal_y_tot_mat
+                    self.Cl_mu_y_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), 0, 5, 3).T
+                    self.Cl_gal_y_tot_mat = self.Cl_gal_y_nomag_mat + self.Cl_mu_y_tot_mat
 
                 self.Cl_gal_tau_tot_mat = vmapped_func(jnp.arange(self.nbins_lens), 0, 2, 4).T
 
@@ -345,6 +382,30 @@ class get_Cl(get_Pkz):
         return constant_factor * radial_kernel
 
     @partial(jit, static_argnums=(0,))
+    def get_magnification_kernel(self, jb, jz):
+        """
+        Lensing-magnification efficiency of lens bin jb (Eq. 22, without the (5s-2) factor):
+            3/2 Om (H0/c)^2 (1+z) chi(z) I_g(z),
+            I_g(z) = int_z^zmax dz_g phi'(z_g) (chi(z_g) - chi(z)) / chi(z_g),
+        with phi' the normalised galaxy redshift distribution of the lens bin. Same structure as
+        get_weak_lensing_kernel, but built from the LENS n(z) instead of the source n(z).
+        """
+        z = self.z_array_for_Cls[jz]
+        chi = self.chi_array_for_Cls[jz]
+        nz_jb = self.pzs_inp_mat_inp_lens[jb, :]
+        nz_jb = nz_jb / jsi.trapezoid(nz_jb, x=self.z_array_nz_lens)
+
+        @vmap
+        def integrand(z_prime):
+            chi_prime = jnp.interp(z_prime, self.z_array_nz_lens, self.chi_array_nz_lens)
+            dndz = jnp.interp(z_prime, self.z_array_nz_lens, nz_jb)
+            return dndz * jnp.clip(chi_prime - chi, 0) / jnp.clip(chi_prime, 0.1)
+
+        radial_kernel = simps(integrand, z, self.zmax_lens, 128) * (1.0 + z) * chi
+        constant_factor = 3.0 * (100.)**2 * self.cosmo_jax.Omega_m / (2.0 * ((const.c.value * 1e-3)**2))
+        return constant_factor * radial_kernel
+
+    @partial(jit, static_argnums=(0,))
     def get_nla_kernel(self, jb, jz):
         """
         Computes the NLA IA kernel
@@ -388,7 +449,8 @@ class get_Cl(get_Pkz):
                 (probe == 1, (1. + self.mult_shear_bias_array[jb]) * (self.Wk_mat[jb] / (self.chi_array_for_Cls**2))),
                 (probe == 2, self.Wg_mat[jb] / (self.dchi_dz_array_for_Cls * self.chi_array_for_Cls**2)),
                 (probe == 3, self.Wy_array / (self.chi_array_for_Cls**2)),
-                (probe == 4, self.Wtau_array / (self.chi_array_for_Cls**2))
+                (probe == 4, self.Wtau_array / (self.chi_array_for_Cls**2)),
+                (probe == 5, self.Wmu_mat[jb] / (self.chi_array_for_Cls**2))
             ]
             
             # Default value if no condition matches
