@@ -387,13 +387,13 @@ class get_Cl(get_Pkz):
         Lensing-magnification efficiency of lens bin jb (without the (5s-2) factor):
             3/2 Om (H0/c)^2 (1+z) chi(z) I_g(z),
             I_g(z) = int_z^zmax dz_g phi'(z_g) (chi(z_g) - chi(z)) / chi(z_g),
-        with phi' the normalised galaxy redshift distribution of the lens bin. Same structure as
-        get_weak_lensing_kernel, but built from the LENS n(z) instead of the source n(z).
+        Same structure as get_weak_lensing_kernel, but built from the LENS n(z). phi' is normalised on
+        z_array_for_Cls, exactly as in get_nz_lens_interp (hence consistent with Wg_mat).
         """
         z = self.z_array_for_Cls[jz]
         chi = self.chi_array_for_Cls[jz]
         nz_jb = self.pzs_inp_mat_inp_lens[jb, :]
-        nz_jb = nz_jb / jsi.trapezoid(nz_jb, x=self.z_array_nz_lens)
+        nz_jb = nz_jb / jsi.trapezoid(jnp.interp(self.z_array_for_Cls, self.z_array_nz_lens, nz_jb), x=self.z_array_for_Cls)
 
         @vmap
         def integrand(z_prime):

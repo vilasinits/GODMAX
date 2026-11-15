@@ -47,10 +47,12 @@ class get_cov(get_Cl):
             # One entry per LENS bin (was arange(self.nbins), i.e. the source bins: identical when
             # nbins == nbins_lens, but silently clipped otherwise).
             self.ug_l_for_cov = vmap(self.get_ug_l_forcov)(jnp.arange(self.nbins_lens))
+            self.ug_l_for_cov_nomag = self.ug_l_for_cov
             if self.model_magnification:
                 # u^{g,obs} = u^g + u^mu, with u^mu = (5s-2) W_mu u^m: same matter profile as kappa.
                 # Added BEFORE np.abs() in get_T_ABCD_NG, so the sign of (5s-2) is kept.
-                self.ug_l_for_cov = self.ug_l_for_cov + vmap(self.get_umu_l_forcov)(jnp.arange(self.nbins_lens))
+                self.umu_l_for_cov = vmap(self.get_umu_l_forcov)(jnp.arange(self.nbins_lens))
+                self.ug_l_for_cov = self.ug_l_for_cov_nomag + self.umu_l_for_cov
         self.hmf_Mz_mat_for_cov = vmap(self.get_hmf_interp)(jnp.arange(self.nM)).T
 
 
