@@ -32,9 +32,6 @@ def load_param_dicts():
     halo.update(nr=16, nz=4, nM=6, nk=16)
     ana.update(model_galaxies=False, backreaction=False, model_tSZ=True)
     ana["num_points_trapz_int"] = 16
-    # YAML 1.1 reads bare "5e-4" as a string; base_class needs a float scalar
-    # here (a length-1 list would not broadcast onto the redshift grid).
-    ana["nbar_gal_comoving_val"] = float(ana["nbar_gal_comoving_val"][0])
     return sim, halo, ana, other
 
 

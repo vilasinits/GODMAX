@@ -361,10 +361,20 @@ class base_class:
                 'betacut_Nsat': 0.0,
                 'betasat_Nsat': 0.0,
             }
+            given = sorted(
+                name for name in fixed_hod_params
+                if name in sim_params_dict or f'{name}_array' in sim_params_dict
+            )
+            if given:
+                raise ValueError(
+                    f"{given} are fixed to 0 by the Zheng HOD (Zheng_HOD=True); do not set them."
+                )
 
             for name, value in fixed_hod_params.items():
                 setattr(self, name, value)
                 setattr(self, f'{name}_array', jnp.atleast_1d(jnp.asarray(value)))
+        elif 'log10Mmin_Ncen' in sim_params_dict or 'log10Mmin_Ncen_array' in sim_params_dict:
+            raise ValueError("log10Mmin_Ncen is only used with Zheng_HOD=True.")
 
         fcen_array = sim_params_dict.get('fcen_array', None)
         if fcen_array is not None:
@@ -453,6 +463,13 @@ class base_class:
         # Weather to use symbolic regression for Pk and HMF:
         self.symbolic_hmf = analysis_dict.get('symbolic_hmf', False)
         self.symbolic_pk = analysis_dict.get('symbolic_pk', False)
+        # The symbolic fits replace the linear P(k), halofit and sigma(M) with LCDM-only fits
+        # of (Om, Ob, h, ns, sigma8), so with the cloelib backend they would replace its cosmology.
+        if self.cosmology_backend == 'cloelib' and (self.symbolic_pk or self.symbolic_hmf):
+            raise ValueError(
+                "symbolic_pk and symbolic_hmf replace the cloelib cosmology (linear P(k), halofit, "
+                "sigma(M)); they cannot be used with cosmology_backend='cloelib'."
+            )
 
         self.angles_data_array = jnp.array(analysis_dict.get('angles_data_array', jnp.logspace(jnp.log10(2.5), jnp.log10(250), 20)))
         self.nt_out = len(self.angles_data_array)

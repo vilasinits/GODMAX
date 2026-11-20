@@ -61,3 +61,9 @@ def test_injected_matches_parameter_built_backend(injected, cosmology):
 def test_cosmology_obj_conflicts_with_jax_cosmo_backend(cosmology):
     with pytest.raises(ValueError, match="cosmology_obj requires"):
         base_class({}, HALO, {'cosmology_obj': cosmology, 'cosmology_backend': 'jax_cosmo'}, {})
+
+
+@pytest.mark.parametrize("key", ["symbolic_pk", "symbolic_hmf"])
+def test_symbolic_fits_conflict_with_cloelib_backend(cosmology, key):
+    with pytest.raises(ValueError, match="cannot be used with cosmology_backend='cloelib'"):
+        base_class({}, HALO, {'cosmology_obj': cosmology, key: True}, {})
