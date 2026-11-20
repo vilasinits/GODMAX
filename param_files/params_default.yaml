@@ -173,7 +173,6 @@ analysis:
 
   verbose_time: False  
   verbose_cov: False
-  plot_cov: False
 
   lowpass_Pmm1h_lowk: True
   kthresh_lowpass_Pmm1h_lowk: 1e-2

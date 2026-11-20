@@ -122,8 +122,8 @@ class get_Pkz(Profiles):
             bm_nfw_2h = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 1).T
             self.bm_nfw_kz_mat = bm_nfw_2h + self.bm_largescales_2h_mat_lt_Mmin   
         else:
-            self.bm_dmb_kz_mat = jnp.ones((len(self.nk), self.nz))
-            self.bm_nfw_kz_mat = jnp.ones((len(self.nk), self.nz))
+            self.bm_dmb_kz_mat = jnp.ones((self.nk, self.nz))
+            self.bm_nfw_kz_mat = jnp.ones((self.nk, self.nz))
 
         if self.model_tSZ:
             self.by_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 3).T
@@ -148,7 +148,8 @@ class get_Pkz(Profiles):
             self.Pge_2h_kz_mat = self.bg_kz_mat * self.be_kz_mat * self.plin_kz_mat
             self.Pgm_2h_kz_mat = self.bg_kz_mat * self.bm_dmb_kz_mat * self.plin_kz_mat
             self.Pgm_nfw_2h_kz_mat = self.bg_kz_mat * self.bm_nfw_kz_mat * self.plin_kz_mat
-            self.Pgy_2h_kz_mat = self.by_kz_mat * self.bg_kz_mat * self.plin_kz_mat
+            if self.model_tSZ:
+                self.Pgy_2h_kz_mat = self.by_kz_mat * self.bg_kz_mat * self.plin_kz_mat
             self.Pgg_2h_kz_mat = self.bg_kz_mat * self.bg_kz_mat * self.plin_kz_mat
 
         # Get the 1-halo power:
@@ -171,7 +172,8 @@ class get_Pkz(Profiles):
             self.Pge_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 2, 4).T
             self.Pgm_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 0, 2).T
             self.Pgm_nfw_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 1, 2).T
-            self.Pgy_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 3, 2).T
+            if self.model_tSZ:
+                self.Pgy_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 3, 2).T
             self.Pgg_1h_kz_mat = vmapped_func(jnp.arange(self.nk), jnp.arange(self.nz), 2, 2).T
 
         # Get the total power:
@@ -200,9 +202,11 @@ class get_Pkz(Profiles):
             self.Pgm_nfw_tot_mat = self._combine_1h2h_poweradd(self.Pgm_nfw_1h_kz_mat, self.Pgm_nfw_2h_kz_mat, self.alpha_gm)
             if self.galaxy_matter_transition_model == 'response':
                 self.Pgm_nfw_tot_mat = self.Pgm_nfw_tot_mat * self.Pmm_sup_tot_mat
-            self.Pgy_tot_mat = self._combine_1h2h_poweradd(self.Pgy_1h_kz_mat, self.Pgy_2h_kz_mat, self.alpha_gy)
-            if self.tSZ_transition_model == 'response':
-                self.Pgy_tot_mat = self.Pgy_tot_mat * self.Pmm_sup_tot_mat
+            # Galaxy x y needs the pressure profiles, so it only exists with model_tSZ.
+            if self.model_tSZ:
+                self.Pgy_tot_mat = self._combine_1h2h_poweradd(self.Pgy_1h_kz_mat, self.Pgy_2h_kz_mat, self.alpha_gy)
+                if self.tSZ_transition_model == 'response':
+                    self.Pgy_tot_mat = self.Pgy_tot_mat * self.Pmm_sup_tot_mat
             self.Pgg_tot_mat = self._combine_1h2h_poweradd(self.Pgg_1h_kz_mat, self.Pgg_2h_kz_mat, self.alpha_gg)
             if self.gg_transition_model == 'response':
                 self.Pgg_tot_mat = (self.Pgg_1h_kz_mat + self.Pgg_2h_kz_mat) * self.Pmm_sup_tot_mat

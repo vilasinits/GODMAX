@@ -65,6 +65,12 @@ class Profiles(base_class):
             super().__init__(sim_params_dict, halo_params_dict, analysis_dict, other_params_dict)
         else:
             self.__dict__.update(base_class_obj.__dict__)
+        if not self.init_power:
+            raise ValueError(
+                "The halo-model profiles and power spectra need the linear power spectrum: "
+                "set sim_params['init_power'] = True (init_power=False is only for "
+                "profile-only classes such as Battaglia_12_16)."
+            )
 
         # Pre-compute arrays that will be used repeatedly
         self.setup_hmf()

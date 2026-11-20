@@ -155,7 +155,7 @@ class setup_sim_map(Profiles):
     def _setup_common(self, mock_params_dict):
         """Common setup for all map types"""
         # Interpolators and arrays
-        H_array = self.H0 * bkgrd.H(self.cosmo_jax, self.scale_fac_a_array)        
+        H_array = self.H0 * self.H(self.scale_fac_a_array)        
         self.H_array_interp = interpax.Interpolator1D(
             self.z_array.astype(jnp.float32), 
             H_array.astype(jnp.float32), 
@@ -733,7 +733,7 @@ class get_sim_map(Profiles):
     def _setup_common(self, mock_params_dict):
         """Common setup for all map types"""
         # Interpolators and arrays
-        H_array = self.H0 * bkgrd.H(self.cosmo_jax, self.scale_fac_a_array)        
+        H_array = self.H0 * self.H(self.scale_fac_a_array)        
         self.H_array_interp = interpax.Interpolator1D(
             self.z_array.astype(jnp.float32), 
             H_array.astype(jnp.float32), 
@@ -937,8 +937,7 @@ class get_sim_map(Profiles):
             if norm > 0:
                 nz_source = nz_source / norm
             chi_source = np.asarray(
-                bkgrd.radial_comoving_distance(
-                    self.cosmo_jax,
+                self.comoving_distance(
                     jnp.array(1.0 / (1.0 + z_source), dtype=jnp.float32),
                 ),
                 dtype=np.float64,

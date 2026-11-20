@@ -66,8 +66,9 @@ class get_Cl(get_Pkz):
             self.Pkge_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pge_tot_mat).T
             self.Pkgm_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgm_tot_mat).T
             self.Pkgm_nfw_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgm_nfw_tot_mat).T
-            self.Pkgy_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgy_tot_mat).T
-            self.Pkgy_lz_mat = self.Pkgy_lz_mat * self.Bl_mat
+            if self.model_tSZ:
+                self.Pkgy_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgy_tot_mat).T
+                self.Pkgy_lz_mat = self.Pkgy_lz_mat * self.Bl_mat
             self.Pkgg_lz_mat = vmapped_func(jnp.arange(self.nell), jnp.arange(self.nz), self.Pgg_tot_mat).T
 
         # Get the interpolators:
@@ -88,9 +89,11 @@ class get_Cl(get_Pkz):
             self.cached_power_spectra = self.cached_power_spectra.at[0,2].set(self.cached_power_spectra[2,0])
             self.logPkgglz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkgg_lz_mat), extrap=True)        
             self.cached_power_spectra = self.cached_power_spectra.at[2,2].set(vmap(lambda l: jnp.exp(self.logPkgglz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
-            self.logPkgylz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkgy_lz_mat), extrap=True)         
-            self.cached_power_spectra = self.cached_power_spectra.at[2,3].set(vmap(lambda l: jnp.exp(self.logPkgylz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
-            self.cached_power_spectra = self.cached_power_spectra.at[3,2].set(self.cached_power_spectra[2,3])
+            if self.model_tSZ:
+                self.logPkgylz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkgy_lz_mat), extrap=True)
+                self.cached_power_spectra = self.cached_power_spectra.at[2,3].set(vmap(lambda l: jnp.exp(self.logPkgylz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
+                self.cached_power_spectra = self.cached_power_spectra.at[3,2].set(self.cached_power_spectra[2,3])
+            else: self.logPkgylz_2d_interp = EmptyCallable()
             self.logPkgm_nfw_lz_2d_interp = interpax.Interpolator2D(jnp.log(self.ell_array), self.z_array, jnp.log(self.Pkgm_nfw_lz_mat), extrap=True)        
             self.cached_power_spectra = self.cached_power_spectra.at[2,1].set(vmap(lambda l: jnp.exp(self.logPkgm_nfw_lz_2d_interp(l, self.z_array_for_Cls)))(log_ell))
             self.cached_power_spectra = self.cached_power_spectra.at[1,2].set(self.cached_power_spectra[2,1])
@@ -243,16 +246,21 @@ class get_Cl(get_Pkz):
     def get_Cl_kcmb_kcmb_tail(self):
         """High-z tail of the CMB-kappa auto spectrum, z from zmax_for_Cls to z_source_cmb.
 
-        Uses the halofit matter power (numerical jax_cosmo halofit, also when symbolic_pk is True,
-        since the emulator is not meant for z >> 3) without baryonic or halo-model corrections.
+        Uses the halofit matter power (numerical halofit, also when symbolic_pk is True, since the
+        emulator is not meant for z >> 3) without baryonic or halo-model corrections: jax_cosmo's
+        halofit, or cloelib's own when cosmology_backend is 'cloelib'.
         This mirrors pyccl/CAMB, which integrate CMB lensing to the source with a non-linear P_mm.
         """
-        a_tail = self.scale_fac_a_array_cmb_tail
-        plin_tail = vmap(linear_matter_power, (None, None, 0))(self.cosmo_jax, self.kPk_array, a_tail).T
-        hfit_tail = vmap(partial(halofit_parameters, num_points=self.num_points_halofit),
-                         (None, 0))(self.cosmo_jax, a_tail).T
-        self.phfit_kz_cmb_tail_mat = vmap(nonlinear_matter_power, (None, None, 0, None, None, None))(
-            self.cosmo_jax, self.kPk_array, a_tail, plin_tail, hfit_tail, a_tail).T          # (nk, nz_tail)
+        if self.cosmology_backend == 'cloelib':
+            self.phfit_kz_cmb_tail_mat = self.cosmo_cloelib.nonlinear_power(
+                self.kPk_array, self.z_array_cmb_tail)                                         # (nk, nz_tail)
+        else:
+            a_tail = self.scale_fac_a_array_cmb_tail
+            plin_tail = vmap(linear_matter_power, (None, None, 0))(self.cosmo_jax, self.kPk_array, a_tail).T
+            hfit_tail = vmap(partial(halofit_parameters, num_points=self.num_points_halofit),
+                             (None, 0))(self.cosmo_jax, a_tail).T
+            self.phfit_kz_cmb_tail_mat = vmap(nonlinear_matter_power, (None, None, 0, None, None, None))(
+                self.cosmo_jax, self.kPk_array, a_tail, plin_tail, hfit_tail, a_tail).T      # (nk, nz_tail)
 
         chi = self.chi_array_cmb_tail
         W = vmap(self.get_cmb_lensing_kernel)(self.z_array_cmb_tail, chi)

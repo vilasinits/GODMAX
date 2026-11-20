@@ -69,6 +69,100 @@ def get_vmapped_func_warg(func, num_args1, num_args2):
         return func
 
 
+# Galaxy (HOD) parameters; each is read as a scalar `name` or a per-bin array `name_array`.
+HOD_PARAMETER_NAMES = (
+    'log10M1_fshmr', 'log10M1_a_fshmr', 'log10Mstar0_fshmr', 'log10Mstar0_a_fshmr',
+    'beta_fshmr', 'beta_a_fshmr', 'delta_fshmr', 'delta_a_fshmr', 'gamma_fshmr',
+    'gamma_a_fshmr', 'siglogMstar_Ncen', 'alphasat_Nsat', 'Bcut_Nsat', 'Bsat_Nsat',
+    'betacut_Nsat', 'betasat_Nsat', 'log10Mmin_Ncen',
+)
+
+# Every key GODMAX reads from each input dictionary. A key not listed here is
+# rejected, so a misspelled setting raises instead of silently taking a default.
+# Add new keys here when a module starts reading them.
+KNOWN_INPUT_KEYS = {
+    'sim_params': frozenset((
+        'cosmo', 'init_power', 'owls_type',
+        'nfw_trunc', 'epsilon_rt',
+        'theta_ej_0', 'log10_Mstar0_theta_ej', 'nu_theta_ej_M', 'nu_theta_ej_z', 'nu_theta_ej_c',
+        'theta_co_0', 'log10_Mstar0_theta_co', 'nu_theta_co_M', 'nu_theta_co_z', 'nu_theta_co_c',
+        'mu_beta', 'log10_Mstar0', 'log10_Mc0', 'nu_z', 'nu_M',
+        'gamma_rhogas', 'delta_rhogas', 'a_zeta', 'n_zeta', 'alpha_nt', 'beta_nt', 'n_nt',
+        'eta_star', 'eta_cga', 'A_starcga', 'log10_M1_starcga', 'fcen', 'fcen_array',
+    ) + HOD_PARAMETER_NAMES + tuple(name + '_array' for name in HOD_PARAMETER_NAMES)),
+    'halo_params': frozenset((
+        'rmin', 'rmax', 'nr', 'lg10_Mmin', 'lg10_Mmax', 'nM', 'kmin', 'kmax', 'nk',
+        'z_array', 'zmin', 'zmax', 'nz', 'ell_array', 'ellmin', 'ellmax', 'nell',
+        'mdef_Delta', 'conc_model', 'hmf_model', 'do_corr_2h_mm',
+    )),
+    'analysis': frozenset((
+        # Cosmology, models and switches
+        'cosmology_backend', 'cosmology_obj', 'symbolic_pk', 'symbolic_hmf',
+        'model_matter', 'model_tSZ', 'model_galaxies', 'Zheng_HOD', 'hod_params_model',
+        'backreaction', 'baryonification_tSZ', 'baryonification_tsz', 'calc_nfw_only',
+        'is_cmb_lensing', 'clm_fourier_transform_method',
+        'tSZ_transition_model', 'gg_transition_model',
+        'galaxy_matter_transition_model', 'gm_transition_model',
+        'galaxy_electron_transition_model', 'ge_transition_model',
+        'lowpass_Pmm1h_lowk', 'kthresh_lowpass_Pmm1h_lowk',
+        # Accuracy
+        'num_points_trapz_int', 'num_points_gal_cal', 'num_points_halofit',
+        'num_points_projected_profile', 'projected_profile_integration_method',
+        'projected_profile_los_max_comoving_mpc',
+        # Galaxy sample and n(z)
+        'nbar_gal_comoving_val', 'nbar_gal_comoving_zarray', 'nbar_lens_bins',
+        'nz_source_info_dict', 'nz_lens_info_dict',
+        # C_ell projection
+        'zmin_for_Cls', 'zmax_for_Cls', 'nz_for_Cls', 'z_source_cmb', 'nz_cmb_lensing_tail',
+        'beam_fwhm_arcmin',
+        # Covariances and survey settings
+        'analysis_coords', 'stats_for_cov', 'l_array_survey', 'dl_array_survey',
+        'k_array_survey', 'angles_data_array', 'fac_ell_hres',
+        'fsky_yy', 'fsky_ky', 'fsky_kk', 'fsky_kg', 'fsky_gg', 'fsky_yg',
+        'fsky_cc', 'fsky_kc', 'fsky_cy', 'fsky_gc',
+        'sigma_epsilon_SN_bins', 'neff_arcmin2_SN_bins',
+        'yy_noise_ell_fname', 'yy_total_ell_fname', 'cmbk_noise_ell_fname',
+        # Output
+        'verbose_time', 'verbose_cov',
+    )),
+    'other_params': frozenset((
+        'A_IA', 'eta_IA', 'z0_IA', 'C1_rhocrit', 'Delta_z_bias_array', 'mult_shear_bias_array',
+        'alpha_ky', 'alpha_gy', 'alpha_gg', 'alpha_gm', 'alpha_ge',
+    )),
+}
+
+MODEL_MATTER_CHOICES = ('DMB', 'halofit')
+TRANSITION_MODEL_CHOICES = ('poweradd', 'response')
+
+
+def check_input_keys(sim_params_dict, halo_params_dict, analysis_dict, other_params_dict):
+    """Raise ValueError if any input dictionary has a key GODMAX does not read.
+
+    Args:
+        sim_params_dict, halo_params_dict, analysis_dict, other_params_dict (dict or None):
+            The four GODMAX input dictionaries; None is treated as empty.
+    """
+    sections = {
+        'sim_params': sim_params_dict,
+        'halo_params': halo_params_dict,
+        'analysis': analysis_dict,
+        'other_params': other_params_dict,
+    }
+    for section, params in sections.items():
+        unknown = set(params or {}) - KNOWN_INPUT_KEYS[section]
+        if unknown:
+            raise ValueError(
+                f"Unknown {section} keys {sorted(unknown)}; check for typos. "
+                f"The accepted keys are listed in godmax.base_class.KNOWN_INPUT_KEYS['{section}']."
+            )
+
+
+def check_choice(name, value, choices):
+    """Raise ValueError if the string setting `name` is not one of `choices`."""
+    if value not in choices:
+        raise ValueError(f"Unknown {name} {value!r}; expected one of {choices}.")
+
+
 class base_class:
     '''
     A base class providing common functionality for physical cosmology calculations
@@ -98,6 +192,7 @@ class base_class:
             None
         """
 
+        check_input_keys(sim_params_dict, halo_params_dict, analysis_dict, other_params_dict)
         self.ENABLE_TIMING = analysis_dict.get('verbose_time', False)
         
         self.read_all_input(sim_params_dict, halo_params_dict, analysis_dict, other_params_dict)
@@ -337,6 +432,7 @@ class base_class:
             )
         # Weather to model the matter with full baryonic effects or just with halofit, for shear-2pt chains
         self.model_matter = analysis_dict.get('model_matter','DMB')
+        check_choice('model_matter', self.model_matter, MODEL_MATTER_CHOICES)
         # Single physical switch for the tSZ (pressure) sector.
         # True  = full baryonic tSZ model: baryonified gas density, DMB gravitational
         #         potential, nonthermal pressure included (P_th = P_tot * (1 - R_nt)).
@@ -402,7 +498,9 @@ class base_class:
 
         # Controls the accuracy of the trapezoidal integration.
         self.num_points_trapz_int = analysis_dict.get('num_points_trapz_int', 64)
-        self.num_points_gal_cal = analysis_dict.get('num_points_trapz_int', 32)
+        # Falls back to num_points_trapz_int, which this setting used to read.
+        self.num_points_gal_cal = analysis_dict.get(
+            'num_points_gal_cal', analysis_dict.get('num_points_trapz_int', 32))
         # Nodes of the halofit non-linear-scale search (and its Simpson steps). R_nl is found by linear
         # interpolation to sigma(R)=1 on this grid, so d R_nl / d(cosmology) is piecewise constant in
         # between nodes: the value converges by ~64 nodes, the derivative does not. At 64 the d/dOm of
@@ -492,6 +590,12 @@ class base_class:
             'galaxy_electron_transition_model',
             analysis_dict.get('ge_transition_model', 'poweradd'),
         )
+        check_choice('tSZ_transition_model', self.tSZ_transition_model, TRANSITION_MODEL_CHOICES)
+        check_choice('gg_transition_model', self.gg_transition_model, TRANSITION_MODEL_CHOICES)
+        check_choice('galaxy_matter_transition_model', self.galaxy_matter_transition_model,
+                     TRANSITION_MODEL_CHOICES)
+        check_choice('galaxy_electron_transition_model', self.galaxy_electron_transition_model,
+                     TRANSITION_MODEL_CHOICES)
         self.alpha_ky = other_params_dict.get('alpha_ky', 1.0)
         self.alpha_gy = other_params_dict.get('alpha_gy', 1.0)
         self.alpha_gg = other_params_dict.get('alpha_gg', 1.0)
@@ -530,8 +634,8 @@ class base_class:
         # rather than interpolated, since it lies outside the halo-model grid.
         self.z_array_cmb_tail = jnp.geomspace(self.zmax_for_Cls, self.z_source_cmb, self.nz_cmb_lensing_tail)
         self.scale_fac_a_array_cmb_tail = 1. / (1. + self.z_array_cmb_tail)
-        self.chi_array_cmb_tail = radial_comoving_distance(self.cosmo_jax, self.scale_fac_a_array_cmb_tail)
-        self.dchi_dz_array_cmb_tail = (const.c.value * 1e-3) / bkgrd.H(self.cosmo_jax, self.scale_fac_a_array_cmb_tail)
+        self.chi_array_cmb_tail = self.comoving_distance(self.scale_fac_a_array_cmb_tail)
+        self.dchi_dz_array_cmb_tail = (const.c.value * 1e-3) / self.H(self.scale_fac_a_array_cmb_tail)
         self.rhom_0 = self.get_rho_m(0.0)
 
     def comoving_distance(self, a):
@@ -546,6 +650,10 @@ class base_class:
         if self.cosmology_backend == 'cloelib':
             return self.cosmo_cloelib.Esqr(a)
         return bkgrd.Esqr(self.cosmo_jax, a)
+
+    def H(self, a):
+        """H(a) [km/s/(Mpc/h)] = 100 E(a) from the cosmology backend (same as jax_cosmo's bkgrd.H)."""
+        return 100.0 * jnp.sqrt(self.Esqr(a))
 
     @partial(jit, static_argnums=(0,))    
     def get_rho_m(self, z):
