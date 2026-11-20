@@ -45,7 +45,7 @@ class get_cov(get_Cl):
         if self.model_galaxies:
             self.ugl_mat = get_vmapped_func(self.get_ugl_interp, 2)(jnp.arange(self.nell), jnp.arange(self.nM)).T
             self.ugl_mat = jnp.moveaxis(self.ugl_mat, 0, 1)
-            self.ug_l_for_cov = vmap(self.get_ug_l_forcov)(jnp.arange(self.nbins))
+            self.ug_l_for_cov = vmap(self.get_ug_l_forcov)(jnp.arange(self.nbins_lens))
         self.hmf_Mz_mat_for_cov = vmap(self.get_hmf_interp)(jnp.arange(self.nM)).T
 
 
